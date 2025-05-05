@@ -2,96 +2,129 @@
 import { NextResponse } from 'next/server';
 import { connect } from '@/lib/mongodb';
 import Course from '@/models/Course';
+import Module from '@/models/Module';
+import Lesson from '@/models/Lesson';
+import { auth } from '@clerk/nextjs/server';
 import mongoose from 'mongoose';
 
-// GET all lessons for a specific module
-export async function GET(request: Request, { params }: { params: { courseId: string, moduleId: string } }) {
-    const { courseId, moduleId } = params;
-
-    if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(moduleId)) {
-        return NextResponse.json({ message: 'Invalid ID format' }, { status: 400 });
-    }
-
-    try {
-        await connect();
-        const course = await Course.findById(courseId).select('modules');
-        if (!course) {
-            return NextResponse.json({ message: 'Course not found' }, { status: 404 });
-        }
-
-        const module = course.modules.id(moduleId);
-        if (!module) {
-            return NextResponse.json({ message: 'Module not found' }, { status: 404 });
-        }
-
-        // Sort lessons by order before returning
-        const sortedLessons = module.lessons.sort((a: { order: number }, b: { order: number }) => a.order - b.order);
-
-        return NextResponse.json(sortedLessons);
-    } catch (error) {
-        console.error('[API_ADMIN_LESSONS_GET]', error);
-        return NextResponse.json({ message: 'Failed to fetch lessons', error }, { status: 500 });
-    }
+// Helper function to serialize lesson
+function serializeLesson(lesson: any) {
+  if (!lesson) return null;
+  const serialized = lesson.toJSON ? lesson.toJSON() : { ...lesson };
+  if (serialized._id) serialized._id = serialized._id.toString();
+  if (serialized.module) serialized.module = serialized.module.toString();
+  // Serialize any dates if needed
+  return serialized;
 }
 
-// POST a new lesson to a specific module
-export async function POST(request: Request, { params }: { params: { courseId: string, moduleId: string } }) {
+// GET handler for fetching all lessons for a specific module
+export async function GET(
+  request: Request,
+  { params }: { params: { courseId: string, moduleId: string } }
+) {
+  // Authorization check
+  const authResult = await auth();
+  if (!authResult?.userId) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    await connect();
     const { courseId, moduleId } = params;
 
     if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(moduleId)) {
-        return NextResponse.json({ message: 'Invalid ID format' }, { status: 400 });
+      return NextResponse.json({ message: "Invalid Course or Module ID" }, { status: 400 });
     }
 
-    try {
-        const body = await request.json();
-        // Destructure all required lesson fields from the body
-        const { title, description, content, contentType, duration, isPublished = false, mediaUrl } = body;
-
-        // Basic validation
-        if (!title || !description || !content || !contentType || duration === undefined) {
-            return NextResponse.json({ message: 'Missing required lesson fields' }, { status: 400 });
-        }
-        // Validate contentType enum
-        const validContentTypes = ['text', 'video', 'audio', 'quiz', 'code', 'chat'];
-        if (!validContentTypes.includes(contentType)) {
-             return NextResponse.json({ message: `Invalid contentType: ${contentType}` }, { status: 400 });
-        }
-
-
-        await connect();
-        const course = await Course.findById(courseId);
-        if (!course) {
-            return NextResponse.json({ message: 'Course not found' }, { status: 404 });
-        }
-
-        const module = course.modules.id(moduleId);
-        if (!module) {
-            return NextResponse.json({ message: 'Module not found' }, { status: 404 });
-        }
-
-        // Determine the order for the new lesson
-        const newOrder = module.lessons.length > 0 ? Math.max(...module.lessons.map((l: { order: number }) => l.order)) + 1 : 1;
-
-        const newLesson = {
-            _id: new mongoose.Types.ObjectId(), // Generate a new ObjectId for the lesson
-            title,
-            description,
-            content,
-            contentType,
-            order: newOrder,
-            duration,
-            isPublished,
-            mediaUrl: contentType === 'video' || contentType === 'audio' ? mediaUrl : undefined, // Only include mediaUrl if relevant
-        };
-
-        module.lessons.push(newLesson);
-        await course.save();
-
-        return NextResponse.json(newLesson, { status: 201 });
-    } catch (error) {
-        console.error('[API_ADMIN_LESSONS_POST]', error);
-        // Provide more specific error message if possible (e.g., validation error)
-        const errorMessage = error instanceof Error ? error.message : 'Failed to add lesson';
-        return NextResponse.json({ message: errorMessage, error }, { status: 500 });
+    // Check that the module exists and belongs to the course
+    const moduleExists = await Module.findOne({ _id: moduleId, course: courseId });
+    if (!moduleExists) {
+      return NextResponse.json({ message: "Module not found or does not belong to this course" }, { status: 404 });
     }
+
+    console.log(`[API GET /admin/courses/:courseId/modules/:moduleId/lessons] Fetching lessons for module: ${moduleId}`);
+    
+    // Method 1: Use the module's lessons array (if populated)
+    // const lessons = await Lesson.find({ _id: { $in: moduleExists.lessons } }).sort({ order: 1 }).lean();
+    
+    // Method 2: Query directly using the module field (more reliable)
+    const lessons = await Lesson.find({ module: moduleId }).sort({ order: 1 }).lean();
+    
+    console.log(`[API GET /admin/courses/:courseId/modules/:moduleId/lessons] Found ${lessons.length} lessons`);
+
+    return NextResponse.json(lessons.map(serializeLesson));
+  } catch (error) {
+    console.error(`[API GET /admin/courses/:courseId/modules/:moduleId/lessons] Error fetching lessons:`, error);
+    return NextResponse.json({ message: "Failed to fetch lessons" }, { status: 500 });
+  }
+}
+
+// POST handler for creating a new lesson within a module
+export async function POST(
+  request: Request,
+  { params }: { params: { courseId: string, moduleId: string } }
+) {
+  // Authorization check
+  const authResult = await auth();
+  if (!authResult?.userId) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    await connect();
+    const { courseId, moduleId } = params;
+    const body = await request.json();
+
+    if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(moduleId)) {
+      return NextResponse.json({ message: "Invalid Course or Module ID" }, { status: 400 });
+    }
+
+    // Check that the module exists and belongs to the course
+    const moduleExists = await Module.findOne({ _id: moduleId, course: courseId });
+    if (!moduleExists) {
+      return NextResponse.json({ message: "Module not found or does not belong to this course" }, { status: 404 });
+    }
+
+    // Determine the order for the new lesson
+    const lastLesson = await Lesson.findOne({ module: moduleId }).sort({ order: -1 });
+    const newOrder = lastLesson ? lastLesson.order + 1 : 0;
+
+    // Required fields validation
+    const { title, description = "", content = "", contentType = "text" } = body;
+    
+    if (!title) {
+      return NextResponse.json({ message: "Lesson title is required" }, { status: 400 });
+    }
+
+    console.log(`[API POST /admin/courses/:courseId/modules/:moduleId/lessons] Creating new lesson: ${title}`);
+
+    // Create the new lesson
+    const newLesson = new Lesson({
+      title,
+      description,
+      content,
+      contentType,
+      order: newOrder,
+      module: moduleId, // Set the parent module reference
+      // Add other fields as needed (duration, isPublished, etc.)
+    });
+
+    await newLesson.save();
+
+    // Add the lesson to the module's lessons array
+    await Module.findByIdAndUpdate(
+      moduleId,
+      { $push: { lessons: newLesson._id } }
+    );
+
+    console.log(`[API POST /admin/courses/:courseId/modules/:moduleId/lessons] Lesson created successfully: ${newLesson._id}`);
+
+    return NextResponse.json(serializeLesson(newLesson), { status: 201 });
+  } catch (error: any) {
+    console.error(`[API POST /admin/courses/:courseId/modules/:moduleId/lessons] Error creating lesson:`, error);
+    if (error.name === 'ValidationError') {
+      return NextResponse.json({ message: "Validation failed", errors: error.errors }, { status: 400 });
+    }
+    return NextResponse.json({ message: "Failed to create lesson" }, { status: 500 });
+  }
 }

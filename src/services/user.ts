@@ -1,4 +1,4 @@
-import { clerkClient } from '@clerk/nextjs';
+import { clerkClient } from '@clerk/nextjs/server'; // Correct import path
 import { auth } from '@clerk/nextjs/server';
 import { connect } from '@/lib/mongodb';
 import User from '@/models/User';
@@ -8,7 +8,7 @@ import User from '@/models/User';
  * Creates a new user record if it doesn't exist yet
  */
 export async function getCurrentUser() {
-  const { userId } = auth();
+  const { userId } = await auth();
   
   if (!userId) {
     return null;

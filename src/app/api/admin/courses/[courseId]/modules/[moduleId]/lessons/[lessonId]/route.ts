@@ -1,133 +1,147 @@
 // src/app/api/admin/courses/[courseId]/modules/[moduleId]/lessons/[lessonId]/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { connect } from '@/lib/mongodb';
-import Course from '@/models/Course';
-import mongoose from 'mongoose';
+import Lesson from '@/models/Lesson';
+import Module from '@/models/Module';
+import mongoose from 'mongoose'; // Import mongoose
 
-// Helper function to find a lesson within a course/module
-async function findLesson(courseId: string, moduleId: string, lessonId: string) {
-    await connect();
-    const course = await Course.findById(courseId);
-    if (!course) {
-        return { course: null, module: null, lesson: null, error: 'Course not found', status: 404 };
-    }
-
-    const module = course.modules.id(moduleId);
-    if (!module) {
-        return { course, module: null, lesson: null, error: 'Module not found', status: 404 };
-    }
-
-    const lesson = module.lessons.id(lessonId);
-    if (!lesson) {
-        return { course, module, lesson: null, error: 'Lesson not found', status: 404 };
-    }
-
-    return { course, module, lesson, error: null, status: 200 };
+// Helper function to serialize lesson
+function serializeLesson(lesson: any) {
+    if (!lesson) return null;
+    const serialized = lesson.toJSON ? lesson.toJSON() : { ...lesson };
+    if (serialized._id) serialized._id = serialized._id.toString();
+    if (serialized.module) serialized.module = serialized.module.toString();
+    return serialized;
 }
 
-
 // GET a specific lesson
-export async function GET(request: Request, { params }: { params: { courseId: string, moduleId: string, lessonId: string } }) {
-    const { courseId, moduleId, lessonId } = params;
+export async function GET(request: NextRequest, { params }: { params: { courseId: string, moduleId: string, lessonId: string } }) {
+    await connect();
+    const { moduleId, lessonId } = params; // courseId might not be needed but good for validation
 
-    if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(moduleId) || !mongoose.Types.ObjectId.isValid(lessonId)) {
-        return NextResponse.json({ message: 'Invalid ID format' }, { status: 400 });
+    // Validate IDs
+    if (!mongoose.Types.ObjectId.isValid(moduleId) || !mongoose.Types.ObjectId.isValid(lessonId)) {
+        return new NextResponse("Invalid Module or Lesson ID format", { status: 400 });
     }
 
     try {
-        const { lesson, error, status } = await findLesson(courseId, moduleId, lessonId);
-
-        if (error) {
-            return NextResponse.json({ message: error }, { status });
+        // Find the lesson and verify it belongs to the module
+        const lesson = await Lesson.findOne({ _id: lessonId, module: moduleId });
+        if (!lesson) {
+            return new NextResponse("Lesson not found or does not belong to this module", { status: 404 });
         }
-
-        return NextResponse.json(lesson);
-    } catch (error) {
-        console.error('[API_ADMIN_LESSON_GET]', error);
-        return NextResponse.json({ message: 'Failed to fetch lesson', error }, { status: 500 });
+        return NextResponse.json(serializeLesson(lesson));
+    } catch (error: any) {
+        console.error("[LESSON_GET]", error);
+        return new NextResponse("Internal Server Error", { status: 500 });
     }
 }
 
 // PUT (update) a specific lesson
-export async function PUT(request: Request, { params }: { params: { courseId: string, moduleId: string, lessonId: string } }) {
-    const { courseId, moduleId, lessonId } = params;
+export async function PUT(request: NextRequest, { params }: { params: { courseId: string, moduleId: string, lessonId: string } }) {
+    await connect();
+    const { moduleId, lessonId } = params;
+    const body = await request.json();
+    // Extract all potential fields from ILesson
+    const {
+        title,
+        description,
+        content,
+        contentType,
+        mediaUrl,
+        order,
+        duration,
+        isPublished
+    }: Partial<InstanceType<typeof Lesson>> = body;
 
-    if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(moduleId) || !mongoose.Types.ObjectId.isValid(lessonId)) {
-        return NextResponse.json({ message: 'Invalid ID format' }, { status: 400 });
+    // Validate IDs
+    if (!mongoose.Types.ObjectId.isValid(moduleId) || !mongoose.Types.ObjectId.isValid(lessonId)) {
+        return new NextResponse("Invalid Module or Lesson ID format", { status: 400 });
+    }
+
+    // Basic validation (add more as needed)
+    if (!title) {
+        return new NextResponse("Title is required", { status: 400 });
     }
 
     try {
-        const body = await request.json();
-        // Destructure all possible fields to update
-        const { title, description, content, contentType, order, duration, isPublished, mediaUrl } = body;
+        // Construct update object with only provided fields
+        const updateData: any = {};
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (content !== undefined) updateData.content = content;
+        if (contentType !== undefined) updateData.contentType = contentType;
+        if (mediaUrl !== undefined) updateData.mediaUrl = mediaUrl;
+        if (order !== undefined) updateData.order = order;
+        if (duration !== undefined) updateData.duration = duration;
+        if (isPublished !== undefined) updateData.isPublished = isPublished;
 
-        // Validate contentType if provided
-        if (contentType) {
-            const validContentTypes = ['text', 'video', 'audio', 'quiz', 'code', 'chat'];
-            if (!validContentTypes.includes(contentType)) {
-                return NextResponse.json({ message: `Invalid contentType: ${contentType}` }, { status: 400 });
-            }
+        const updatedLesson = await Lesson.findOneAndUpdate(
+            { _id: lessonId, module: moduleId }, // Ensure lesson belongs to the module
+            { $set: updateData },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedLesson) {
+            return new NextResponse("Lesson not found or does not belong to this module", { status: 404 });
         }
 
-        const { course, lesson, error, status } = await findLesson(courseId, moduleId, lessonId);
+        // If order was changed, you might need to re-order other lessons in the module (complex logic, omitted for brevity)
 
-        if (error || !course || !lesson) {
-            return NextResponse.json({ message: error || 'Lesson or Course not found' }, { status: status || 404 });
+        return NextResponse.json(serializeLesson(updatedLesson));
+    } catch (error: any) {
+        console.error("[LESSON_PUT]", error);
+        if (error.name === 'ValidationError') {
+            let errors = {};
+            Object.keys(error.errors).forEach((key) => {
+                //@ts-ignore
+                errors[key] = error.errors[key].message;
+            });
+            return new NextResponse(JSON.stringify({ message: "Validation Error", errors }), { status: 400 });
         }
-
-        // Update lesson fields selectively
-        if (title !== undefined) lesson.title = title;
-        if (description !== undefined) lesson.description = description;
-        if (content !== undefined) lesson.content = content;
-        if (contentType !== undefined) lesson.contentType = contentType;
-        if (order !== undefined) lesson.order = order;
-        if (duration !== undefined) lesson.duration = duration;
-        if (isPublished !== undefined) lesson.isPublished = isPublished;
-        // Only update mediaUrl if contentType is video or audio
-        if ((contentType === 'video' || contentType === 'audio' || lesson.contentType === 'video' || lesson.contentType === 'audio') && mediaUrl !== undefined) {
-            lesson.mediaUrl = mediaUrl;
-        } else if (contentType && contentType !== 'video' && contentType !== 'audio') {
-            // Clear mediaUrl if content type changes away from video/audio
-            lesson.mediaUrl = undefined;
-        }
-
-        await course.save();
-
-        return NextResponse.json(lesson);
-    } catch (error) {
-        console.error('[API_ADMIN_LESSON_PUT]', error);
-        const errorMessage = error instanceof Error ? error.message : 'Failed to update lesson';
-        return NextResponse.json({ message: errorMessage, error }, { status: 500 });
+        return new NextResponse("Internal Server Error", { status: 500 });
     }
 }
 
 // DELETE a specific lesson
-export async function DELETE(request: Request, { params }: { params: { courseId: string, moduleId: string, lessonId: string } }) {
-    const { courseId, moduleId, lessonId } = params;
+export async function DELETE(request: NextRequest, { params }: { params: { courseId: string, moduleId: string, lessonId: string } }) {
+    await connect();
+    const { moduleId, lessonId } = params;
 
-    if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(moduleId) || !mongoose.Types.ObjectId.isValid(lessonId)) {
-        return NextResponse.json({ message: 'Invalid ID format' }, { status: 400 });
+    // Validate IDs
+    if (!mongoose.Types.ObjectId.isValid(moduleId) || !mongoose.Types.ObjectId.isValid(lessonId)) {
+        return new NextResponse("Invalid Module or Lesson ID format", { status: 400 });
     }
 
-    try {
-        const { course, module, lesson, error, status } = await findLesson(courseId, moduleId, lessonId);
+    const session = await mongoose.startSession(); // Use transaction
+    session.startTransaction();
 
-        if (error || !course || !module || !lesson) {
-            return NextResponse.json({ message: error || 'Lesson, Module or Course not found' }, { status: status || 404 });
+    try {
+        // Find and delete the lesson, ensuring it belongs to the module
+        const deletedLesson = await Lesson.findOneAndDelete({ _id: lessonId, module: moduleId }).session(session);
+
+        if (!deletedLesson) {
+            await session.abortTransaction();
+            session.endSession();
+            return new NextResponse("Lesson not found or does not belong to this module", { status: 404 });
         }
 
-        // Use Mongoose's pull method for subdocuments
-        module.lessons.pull({ _id: lessonId });
-
-        await course.save();
+        // Remove the lesson reference from the parent module
+        await Module.findByIdAndUpdate(moduleId,
+            { $pull: { lessons: lessonId } },
+            { session }
+        );
 
         // Optional: Re-order remaining lessons if necessary
-        // module.lessons.sort((a, b) => a.order - b.order).forEach((l, index) => l.order = index + 1);
-        // await course.save();
 
-        return NextResponse.json({ message: 'Lesson deleted successfully' });
-    } catch (error) {
-        console.error('[API_ADMIN_LESSON_DELETE]', error);
-        return NextResponse.json({ message: 'Failed to delete lesson', error }, { status: 500 });
+        await session.commitTransaction();
+        session.endSession();
+
+        return new NextResponse(null, { status: 204 }); // No content on successful delete
+    } catch (error: any) {
+        await session.abortTransaction();
+        session.endSession();
+        console.error("[LESSON_DELETE]", error);
+        return new NextResponse("Internal Server Error", { status: 500 });
     }
 }

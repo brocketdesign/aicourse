@@ -29,24 +29,18 @@ export interface IUser extends Document {
   imageUrl?: string;
   role: 'student' | 'admin' | 'instructor';
   enrolledCourses: Types.ObjectId[];
-  progress: IProgress[];
+  progress: { courseId: Types.ObjectId; completedLessons: Types.ObjectId[] }[]; // Array of sub-schema structure
   subscription?: ISubscription;
   lastLogin: Date;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const ProgressSchema = new Schema({
+// Define the structure for progress within a single course
+const CourseProgressSchema = new Schema({
   courseId: { type: Schema.Types.ObjectId, ref: 'Course', required: true },
-  completedLessons: [{ type: String }],
-  lastAccessedLesson: { type: String },
-  lastAccessedAt: { type: Date },
-  quizScores: [{
-    lessonId: { type: String, required: true },
-    score: { type: Number, required: true },
-    maxScore: { type: Number, required: true }
-  }]
-});
+  completedLessons: [{ type: Schema.Types.ObjectId, ref: 'Lesson' }] // Array of completed Lesson ObjectIds
+}, { _id: false }); // Don't create a separate _id for this subdocument
 
 const SubscriptionSchema = new Schema({
   stripePriceId: { type: String, required: true },
@@ -72,7 +66,10 @@ const UserSchema = new Schema({
     default: 'student'
   },
   enrolledCourses: [{ type: Schema.Types.ObjectId, ref: 'Course' }],
-  progress: [ProgressSchema],
+  progress: {
+    type: [CourseProgressSchema],
+    default: []
+  },
   subscription: SubscriptionSchema,
   lastLogin: { type: Date, default: Date.now },
 }, { 
@@ -84,5 +81,6 @@ UserSchema.index({ email: 1 });
 UserSchema.index({ role: 1 });
 UserSchema.index({ 'subscription.status': 1 });
 UserSchema.index({ enrolledCourses: 1 });
+UserSchema.index({ 'progress.courseId': 1 }); // Add index for faster progress lookup
 
 export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

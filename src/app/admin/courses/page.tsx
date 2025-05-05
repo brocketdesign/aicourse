@@ -1,67 +1,78 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { PlusCircle } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { useEffect, useState, useCallback } from 'react';
 import { DataTable } from "@/components/ui/data-table";
-import { columns, Course } from "./columns"; // Assuming columns.tsx is in the same directory
+import { Course, createColumns } from "./columns";
+import { toast } from "sonner";
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { PlusCircle } from 'lucide-react';
 
-// TODO: Implement actual data fetching and error handling
 async function getData(): Promise<Course[]> {
-  // Fetch data from your API here.
+  console.log("Fetching courses data...");
   try {
-    const res = await fetch("/api/admin/courses");
+    const res = await fetch('/api/admin/courses');
     if (!res.ok) {
+      console.error("Failed to fetch courses: ", res.status, res.statusText);
+      const errorBody = await res.text();
+      console.error("Error body:", errorBody);
       throw new Error(`Failed to fetch courses: ${res.statusText}`);
     }
     const data = await res.json();
-    // Ensure the data matches the Course type, potentially transforming it
-    return data as Course[];
+    console.log("Courses data fetched successfully:", data);
+    // Ensure _id is present and price is a number
+    return data.map((course: any) => ({
+      ...course,
+      _id: course._id || course.id, // Handle potential id field if serialization changes
+      price: typeof course.price === 'number' ? course.price : 0, // Ensure price is a number
+      isPublished: typeof course.isPublished === 'boolean' ? course.isPublished : false,
+    }));
   } catch (error) {
-    console.error("Error fetching courses:", error);
-    // Handle the error appropriately in UI, maybe return empty array or throw
-    return [];
+    console.error("Error in getData:", error);
+    toast.error("Could not load courses. Please try again later.");
+    return []; // Return empty array on error
   }
 }
 
 export default function CoursesPage() {
   const [data, setData] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const courses = await getData();
+    setData(courses);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const courses = await getData();
-        setData(courses);
-      } catch (err: any) {
-        setError(err.message || "Failed to load courses.");
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
-  }, []);
+  }, [fetchData]);
+
+  const columns = createColumns(fetchData);
+
+  if (loading) {
+    return <div>Loading courses...</div>;
+  }
 
   return (
     <div className="container mx-auto py-10">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Courses</h1>
-        <Link href="/admin/courses/new">
-          <Button>
-            <PlusCircle className="mr-2 h-4 w-4" /> Create Course
-          </Button>
-        </Link>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold">Manage Courses</h1>
+        {/* TODO: Implement the /admin/courses/new page */}
+        <Button asChild>
+          <Link href="/admin/courses/new">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Create New Course
+          </Link>
+        </Button>
       </div>
-      {loading && <p>Loading courses...</p>}
-      {error && <p className="text-red-500">Error: {error}</p>}
-      {!loading && !error && (
-        <DataTable columns={columns} data={data} filterColumnId="title" filterPlaceholder="Filter courses by title..." />
-      )}
+      <DataTable
+        columns={columns}
+        data={data}
+        filterColumnId="title" // Added filter column ID
+        filterPlaceholder="Filter by title..." // Added filter placeholder
+      />
     </div>
   );
 }

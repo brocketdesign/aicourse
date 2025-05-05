@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link'; // Import Link
 import { useParams } from 'next/navigation';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
   DialogTrigger,
   DialogClose, // Import DialogClose
 } from "@/components/ui/dialog";
-import { Trash2, Edit, PlusCircle } from 'lucide-react';
+import { Trash2, Edit, PlusCircle, BookOpen } from 'lucide-react'; // Add BookOpen icon
 
 // Define the Module type based on your schema
 interface Module {
@@ -220,6 +221,7 @@ export function ModulesManager() {
             <TableHead className="w-[80px]">Order</TableHead>
             <TableHead>Title</TableHead>
             <TableHead>Description</TableHead>
+            <TableHead>Content</TableHead> {/* Add Content column header */}
             <TableHead className="text-right w-[120px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -230,6 +232,13 @@ export function ModulesManager() {
                 <TableCell>{module.order}</TableCell>
                 <TableCell className="font-medium">{module.title}</TableCell>
                 <TableCell>{module.description}</TableCell>
+                <TableCell> {/* Add cell for Manage Content button */}
+                  <Link href={`/admin/courses/${courseId}/modules/${module._id}/lessons`} passHref>
+                    <Button variant="outline" size="sm">
+                      <BookOpen className="mr-2 h-4 w-4" /> Manage Content
+                    </Button>
+                  </Link>
+                </TableCell>
                 <TableCell className="text-right">
                   <Button variant="ghost" size="sm" onClick={() => handleEditModule(module)} className="mr-2">
                     <Edit className="h-4 w-4" />
@@ -242,7 +251,7 @@ export function ModulesManager() {
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={4} className="text-center">No modules found.</TableCell>
+              <TableCell colSpan={5} className="text-center">No modules found.</TableCell> {/* Update colSpan */}
             </TableRow>
           )}
         </TableBody>

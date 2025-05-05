@@ -1,58 +1,55 @@
-"use client";
+'use client';
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal, Pencil, Trash } from "lucide-react";
+import { ArrowUpDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
-
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 
-// TODO: Define the actual Course type based on the API response
+// Define the shape of our data
+// Use Zod for validation if needed
 export type Course = {
-  id: string;
+  _id: string; // Changed from id to _id
   title: string;
-  price: number;
-  students: number; // Placeholder
-  status: "Published" | "Draft";
-  createdAt: string;
+  price: number; // In cents from API
+  isPublished: boolean; // Added isPublished
+  createdAt?: string | Date; // Optional, depending on API serialization
+  updatedAt?: string | Date; // Optional
 };
 
-// TODO: Implement delete functionality
-const handleDelete = (courseId: string) => {
-  console.log("Delete course:", courseId);
-  // Add API call and confirmation dialog here
+// Function to handle deletion
+const handleDelete = async (courseId: string, refreshData: () => void) => {
+  if (!confirm("Are you sure you want to delete this course?")) {
+    return;
+  }
+  try {
+    console.log(`Attempting to delete course with ID: ${courseId}`);
+    const response = await fetch(`/api/admin/courses/${courseId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Failed to delete course");
+    }
+    toast.success("Course deleted successfully!");
+    refreshData(); // Refresh the data table
+  } catch (error: any) {
+    console.error("Error deleting course:", error);
+    toast.error(`Failed to delete course: ${error.message}`);
+  }
 };
 
-export const columns: ColumnDef<Course>[] = [
-  {
-    id: "select",
-    header: ({ table }) => (
-      <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && "indeterminate")
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
-      />
-    ),
-    cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
-      />
-    ),
-    enableSorting: false,
-    enableHiding: false,
-  },
+// Factory function to create columns
+export const createColumns = (refreshData: () => void): ColumnDef<Course>[] => [
   {
     accessorKey: "title",
     header: ({ column }) => {
@@ -66,59 +63,43 @@ export const columns: ColumnDef<Course>[] = [
         </Button>
       );
     },
-    cell: ({ row }) => <div className="font-medium">{row.getValue("title")}</div>,
   },
   {
     accessorKey: "price",
-    header: ({ column }) => {
-      return (
+    header: ({ column }) => (
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="text-right"
         >
           Price
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
-      );
-    },
+      ),
     cell: ({ row }) => {
-      const amountInCents = parseFloat(row.getValue("price"));
-      // Convert cents to dollars
-      const amountInDollars = amountInCents / 100;
-
+      const priceInCents = parseFloat(row.getValue("price"));
       const formatted = new Intl.NumberFormat("en-US", {
         style: "currency",
         currency: "USD",
-      }).format(amountInDollars);
-
-      return <div className="text-right font-medium">{formatted}</div>;
+      }).format(priceInCents / 100); // Convert cents to dollars for display
+      return <div className="font-medium">{formatted}</div>;
     },
   },
   {
-    accessorKey: "students",
-    header: "Students", // Placeholder
-    cell: ({ row }) => <div className="text-center">{row.getValue("students")}</div>, // Placeholder
-  },
-  {
-    accessorKey: "status",
-    header: "Status",
+    accessorKey: "isPublished",
+    header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+        >
+          Status
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      ),
     cell: ({ row }) => {
-      const status = row.getValue("status") as string;
-      return (
-        <Badge variant={status === "Published" ? "default" : "secondary"}>
-          {status}
-        </Badge>
-      );
-    },
-  },
-  {
-    accessorKey: "createdAt",
-    header: "Created At",
-    cell: ({ row }) => {
-      const date = new Date(row.getValue("createdAt"));
-      const formattedDate = date.toLocaleDateString();
-      return <div>{formattedDate}</div>;
+      const isPublished = row.getValue("isPublished");
+      const status = isPublished ? "Published" : "Draft";
+      const variant = isPublished ? "default" : "secondary";
+      return <Badge variant={variant}>{status}</Badge>;
     },
   },
   {
@@ -135,14 +116,19 @@ export const columns: ColumnDef<Course>[] = [
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <Link href={`/admin/courses/${course.id}`}>
-              <DropdownMenuItem>
+            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+            <DropdownMenuItem asChild>
+              <Link href={`/admin/courses/${course._id}`}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit
-              </DropdownMenuItem>
-            </Link>
-            <DropdownMenuItem onClick={() => handleDelete(course.id)} className="text-red-600">
-              <Trash className="mr-2 h-4 w-4" />
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => handleDelete(course._id, refreshData)} // Pass refreshData
+              className="text-red-600 focus:text-red-700 focus:bg-red-50"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
