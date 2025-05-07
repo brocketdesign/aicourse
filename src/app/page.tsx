@@ -134,7 +134,7 @@ export default function Home() {
       <motion.section 
         ref={targetRef}
         style={{ opacity, scale }}
-        className="relative h-[calc(100vh_+_100px)] flex items-center justify-center overflow-hidden bg-gradient-to-b from-background to-background/80 pt-100"
+        className="relative h-[calc(100vh_+_100px)] flex items-center justify-center overflow-hidden bg-gradient-to-b from-background to-background/80 pt-5"
       >
         <div className="container mx-auto px-4 relative z-10 text-center">
           <motion.h1
@@ -180,13 +180,6 @@ export default function Home() {
             transition={{ duration: 0.8, delay: 0.9, ease: "easeOut" }}
             className="mt-16"
           >
-            <Image
-              src="https://via.placeholder.com/800x450/cccccc/969696.png?text=AI+Monetization+Dashboard+Preview"
-              alt="AI Monetization Course Preview"
-              width={800}
-              height={450}
-              className="rounded-lg shadow-xl mx-auto border border-border"
-            />
           </motion.div>
         </div>
         <div className="absolute inset-0 bg-gradient-radial from-blue-500/10 via-transparent to-transparent -z-10" />
@@ -278,37 +271,31 @@ export default function Home() {
           <div className="w-24 h-1 bg-gradient-to-r from-blue-400 to-purple-400 mx-auto mb-16 rounded-full"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 max-w-6xl mx-auto">
             <div className="bg-gradient-to-br from-gray-900 to-black/80 backdrop-blur-lg p-8 rounded-xl border border-white/20 shadow-xl flex flex-col">
-              <Image src="https://via.placeholder.com/400x250/FFD700/000000.png?text=Passive+Income+Stream" alt="Passive Income" width={400} height={250} className="rounded-md mb-6 shadow-md" />
               <DollarSign className="w-10 h-10 mb-4 text-yellow-400" />
               <h3 className="text-2xl font-bold mb-3 text-white">$3K+ Monthly Passive Income</h3>
               <p className="text-gray-300 flex-grow">Build automated AI systems that generate revenue around the clock, even while you sleep.</p>
             </div>
             <div className="bg-gradient-to-br from-gray-900 to-black/80 backdrop-blur-lg p-8 rounded-xl border border-white/20 shadow-xl flex flex-col">
-              <Image src="https://via.placeholder.com/400x250/90EE90/000000.png?text=Enjoying+Free+Time" alt="Time Freedom" width={400} height={250} className="rounded-md mb-6 shadow-md" />
               <Clock className="w-10 h-10 mb-4 text-green-400" />
               <h3 className="text-2xl font-bold mb-3 text-white">Reclaim Your Time</h3>
               <p className="text-gray-300 flex-grow">Let AI handle the grunt work. Spend your time on what truly matters – family, hobbies, or your next big idea.</p>
             </div>
             <div className="bg-gradient-to-br from-gray-900 to-black/80 backdrop-blur-lg p-8 rounded-xl border border-white/20 shadow-xl flex flex-col">
-              <Image src="https://via.placeholder.com/400x250/87CEEB/000000.png?text=Working+From+Anywhere" alt="Travel the World" width={400} height={250} className="rounded-md mb-6 shadow-md" />
               <Globe className="w-10 h-10 mb-4 text-blue-400" />
               <h3 className="text-2xl font-bold mb-3 text-white">Work From Anywhere</h3>
               <p className="text-gray-300 flex-grow">Your office is wherever your laptop is. Run your AI business from a beach, a mountain cabin, or your home.</p>
             </div>
             <div className="bg-gradient-to-br from-gray-900 to-black/80 backdrop-blur-lg p-8 rounded-xl border border-white/20 shadow-xl flex flex-col">
-              <Image src="https://via.placeholder.com/400x250/E6E6FA/000000.png?text=High-Value+AI+Skills" alt="In-Demand Skills" width={400} height={250} className="rounded-md mb-6 shadow-md" />
               <Laptop className="w-10 h-10 mb-4 text-purple-400" />
               <h3 className="text-2xl font-bold mb-3 text-white">Master Future-Proof Skills</h3>
               <p className="text-gray-300 flex-grow">Acquire highly valuable AI development and monetization skills, positioning yourself as a leader in the new economy.</p>
             </div>
             <div className="bg-gradient-to-br from-gray-900 to-black/80 backdrop-blur-lg p-8 rounded-xl border border-white/20 shadow-xl flex flex-col">
-              <Image src="https://via.placeholder.com/400x250/FFA07A/000000.png?text=Flexible+Work+Schedule" alt="Set Your Schedule" width={400} height={250} className="rounded-md mb-6 shadow-md" />
               <Calendar className="w-10 h-10 mb-4 text-orange-400" />
               <h3 className="text-2xl font-bold mb-3 text-white">Design Your Ideal Week</h3>
               <p className="text-gray-300 flex-grow">Escape the rigid 9-to-5. Structure your work around your life, priorities, and peak productivity times.</p>
             </div>
             <div className="bg-gradient-to-br from-gray-900 to-black/80 backdrop-blur-lg p-8 rounded-xl border border-white/20 shadow-xl flex flex-col">
-              <Image src="https://via.placeholder.com/400x250/FFC0CB/000000.png?text=Unleashed+Creativity" alt="Creative Freedom" width={400} height={250} className="rounded-md mb-6 shadow-md" />
               <Sparkles className="w-10 h-10 mb-4 text-pink-400" />
               <h3 className="text-2xl font-bold mb-3 text-white">Focus on Creative Impact</h3>
               <p className="text-gray-300 flex-grow">Automate repetitive tasks and dedicate your energy to innovation, strategy, and building things you love.</p>

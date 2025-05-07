@@ -11,28 +11,45 @@ import { toast } from "sonner"; // Import toast for notifications
 
 // Define the type for the course prop
 interface Course {
+  _id?: string; // Add _id if it comes from MongoDB
   slug: string;
   title: string;
-  subtitle: string;
+  subtitle?: string; // Keep, potentially optional
   description: string;
-  price: number;
-  salePrice: number;
-  discount: number;
-  stripePriceId: string;
-  features: string[];
-  instructor: {
+  coverImage?: string; // Add from schema
+  price: number; // Keep, represents original price in cents
+  salePrice: number; // Keep, represents sale price in cents
+  discount?: number; // Keep, potentially optional or calculated
+  stripePriceId?: string; // Keep, optional in schema
+  stripeProductId?: string; // Add from schema, optional
+  authors?: string[]; // Add from schema (assuming populated as string IDs or User objects)
+  features?: string[]; // Keep, present in seed data
+  instructor?: { // Keep, present in component usage, potentially populated
     name: string;
     title: string;
     bio: string;
     image: string;
   };
-  modules: {
-    id: string;
+  modules: { // Keep, represents populated modules
+    id: string; // Corresponds to _id from ModuleSchema
     title: string;
     description: string;
-    icon: string;
-    lessons: string[];
+    icon?: string; // Add icon if used, make optional
+    // Update lessons to expect an array of objects with id and title
+    lessons: {
+      _id: string; // Use _id from LessonSchema
+      title: string;
+      // Add other lesson fields if needed by the client
+    }[];
   }[];
+  isPublished?: boolean; // Add from schema
+  prerequisites?: string[]; // Add from schema
+  level?: 'beginner' | 'intermediate' | 'advanced'; // Add from schema
+  duration?: number; // Add from schema (total minutes)
+  featured?: boolean; // Add from schema
+  enrollmentCount?: number; // Add from schema
+  createdAt?: string | Date; // Add from schema timestamps
+  updatedAt?: string | Date; // Add from schema timestamps
 }
 
 // Re-use the testimonial and guarantee data (or fetch if needed)
@@ -328,8 +345,10 @@ export default function CoursePageClient({ course }: { course: Course }) {
       <div className="md:hidden bg-white shadow-md py-4 px-4 sticky top-0 z-50">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-500 line-through">${course.price}</p>
-            <p className="text-xl font-bold text-blue-600">${course.salePrice}</p>
+            {/* Display original price as double the sale price */}
+            <p className="text-sm text-gray-500 line-through">${((course.salePrice / 100) * 2).toFixed(2)}</p>
+            {/* Display sale price converted from cents */}
+            <p className="text-xl font-bold text-blue-600">${(course.salePrice / 100).toFixed(2)}</p>
           </div>
           {isAlreadyEnrolled ? (
             <Link href="/dashboard" className="inline-flex items-center justify-center bg-green-600 text-white font-bold py-2 px-6 rounded-full">
@@ -388,11 +407,12 @@ export default function CoursePageClient({ course }: { course: Course }) {
                   {course.modules.map((module) => {
                     // Calculate module progress
                     const moduleLessons = module.lessons || []; // Ensure lessons array exists
-                    const completedInModule = moduleLessons.filter(lessonId => completedLessonIds.includes(lessonId)).length;
+                    const completedInModule = moduleLessons.filter(lesson => completedLessonIds.includes(lesson._id)).length;
                     const totalInModule = moduleLessons.length;
                     const moduleProgress = totalInModule > 0 ? (completedInModule / totalInModule) * 100 : 0;
 
                     return (
+                      // Add key prop using module.id
                       <div key={module.id} className="border rounded-lg bg-white shadow-sm overflow-hidden">
                         <button
                           onClick={() => toggleModule(module.id)}
@@ -434,8 +454,11 @@ export default function CoursePageClient({ course }: { course: Course }) {
                         {expandedModules.includes(module.id) && (
                           <div className="px-6 pb-6 border-t bg-gray-50/50">
                             <ul className="mt-4 space-y-3">
-                              {moduleLessons.length > 0 ? moduleLessons.map((lessonId, i) => {
-                                const lessonName = `Lesson ${i + 1}`; // Placeholder
+                              {/* Check if moduleLessons exists and has items */}
+                              {moduleLessons && moduleLessons.length > 0 ? moduleLessons.map((lesson) => {
+                                // Use lesson._id and lesson.title directly
+                                const lessonId = lesson._id;
+                                const lessonName = lesson.title; // Use the actual title
                                 const isCompleted = completedLessonIds.includes(lessonId);
                                 const isUpdating = updatingProgress === lessonId;
 
@@ -443,6 +466,7 @@ export default function CoursePageClient({ course }: { course: Course }) {
                                   <li key={lessonId} className="flex items-center justify-between text-gray-700 group">
                                     <div className="flex items-center">
                                       <BookOpen className="w-5 h-5 mr-3 text-blue-500 flex-shrink-0" />
+                                      {/* Display the actual lesson title */}
                                       <span className={`${isCompleted ? 'line-through text-gray-500' : ''}`}>{lessonName}</span>
                                       {isCompleted && <CheckCircle className="w-4 h-4 ml-2 text-green-500 flex-shrink-0" />}
                                     </div>
@@ -462,7 +486,7 @@ export default function CoursePageClient({ course }: { course: Course }) {
                                         )}
                                       </button>
                                     ) : (
-                                      <Lock className="w-4 h-4 ml-4 text-gray-400 flex-shrink-0" title="Enroll to access" />
+                                      <Lock className="w-4 h-4 ml-4 text-gray-400 flex-shrink-0" aria-label="Enroll to access" />
                                     )}
                                   </li>
                                 );
@@ -482,34 +506,39 @@ export default function CoursePageClient({ course }: { course: Course }) {
             {/* Instructor Content */}
             {activeTab === 'instructor' && (
               <div>
-                <div className="bg-white rounded-lg shadow-sm p-8">
-                  <div className="flex flex-col md:flex-row gap-8 items-center md:items-start">
-                    <div className="relative w-40 h-40 flex-shrink-0">
-                      <Image
-                        src={course.instructor.image}
-                        alt={course.instructor.name}
-                        fill
-                        className="rounded-full object-cover border-4 border-white shadow-lg"
-                      />
-                    </div>
-                    <div>
-                      <h2 className="text-3xl font-bold mb-2">{course.instructor.name}</h2>
-                      <p className="text-blue-600 font-medium mb-4">{course.instructor.title}</p>
-                      <p className="text-lg mb-6">{course.instructor.bio}</p>
+                {/* Add check for course.instructor before rendering */}
+                {course.instructor ? (
+                  <div className="bg-white rounded-lg shadow-sm p-8">
+                    <div className="flex flex-col md:flex-row gap-8 items-center md:items-start">
+                      <div className="relative w-40 h-40 flex-shrink-0">
+                        <Image
+                          src={course.instructor.image}
+                          alt={course.instructor.name}
+                          fill
+                          className="rounded-full object-cover border-4 border-white shadow-lg"
+                        />
+                      </div>
+                      <div>
+                        <h2 className="text-3xl font-bold mb-2">{course.instructor.name}</h2>
+                        <p className="text-blue-600 font-medium mb-4">{course.instructor.title}</p>
+                        <p className="text-lg mb-6">{course.instructor.bio}</p>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <div className="text-3xl font-bold text-blue-600">500+</div>
-                          <div className="text-gray-500">Companies Helped</div>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <div className="text-3xl font-bold text-blue-600">$10M+</div>
-                          <div className="text-gray-500">Revenue Generated</div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <div className="text-3xl font-bold text-blue-600">500+</div>
+                            <div className="text-gray-500">Companies Helped</div>
+                          </div>
+                          <div className="bg-gray-50 p-4 rounded-lg">
+                            <div className="text-3xl font-bold text-blue-600">$10M+</div>
+                            <div className="text-gray-500">Revenue Generated</div>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <p className="text-gray-500">Instructor information is not available for this course.</p>
+                )}
               </div>
             )}
 
@@ -558,8 +587,10 @@ export default function CoursePageClient({ course }: { course: Course }) {
                   </div>
                 </div>
                 <div className="flex items-center">
-                  <div className="text-lg text-white/70 line-through mr-2">${course.price}</div>
-                  <div className="text-4xl font-bold">${course.salePrice}</div>
+                  {/* Display original price as double the sale price */}
+                  <div className="text-lg text-white/70 line-through mr-2">${((course.salePrice / 100) * 2).toFixed(2)}</div>
+                  {/* Display sale price converted from cents */}
+                  <div className="text-4xl font-bold">${(course.salePrice / 100).toFixed(2)}</div>
                 </div>
               </div>
 
@@ -567,7 +598,8 @@ export default function CoursePageClient({ course }: { course: Course }) {
                 <div>
                   <h3 className="text-xl font-bold mb-4">What's included:</h3>
                   <ul className="space-y-3">
-                    {course.features.map((feature, index) => (
+                    {/* Add check for course.features before mapping */}
+                    {(course.features || []).map((feature, index) => (
                       <li key={index} className="flex">
                         <CheckCircle className="w-5 h-5 text-green-500 mr-3 flex-shrink-0 mt-1" />
                         <span>{feature}</span>

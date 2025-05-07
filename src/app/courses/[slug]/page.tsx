@@ -22,8 +22,11 @@ export default async function CoursePage({ params }: { params: { slug: string } 
   // Ensure DB connection
   await connect();
 
-  // Find the course by slug
-  const courseDoc = await CourseModel.findOne({ slug }).lean();
+  // Find the course by slug and explicitly lean + include the instructor field
+  const courseDoc = await CourseModel.findOne({ slug })
+    .select('-__v') // Exclude version field
+    .lean();
+  
   if (!courseDoc) {
     redirect('/not-found');
   }
@@ -89,6 +92,14 @@ export default async function CoursePage({ params }: { params: { slug: string } 
     }
     redirect('/dashboard?message=Course has no lessons yet');
   }
+
+  // Include a console log to debug what data is being passed to the client component
+  console.log('Course data being passed to client:', 
+    JSON.stringify({
+      ...course,
+      description: course.description.substring(0, 50) + '...' // Truncate for readability
+    }, null, 2)
+  );
 
   return <CoursePageClient course={course} />;
 }

@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
       'stripe.com',
       'localhost',
       'img.clerk.com',
+      's47434.pcdn.co',
     ],
   },
   env: {

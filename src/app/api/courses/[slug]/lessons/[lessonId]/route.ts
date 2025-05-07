@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { connect } from '@/lib/mongodb';
-import Course from '@/models/Course';
+import Course, { ICourse } from '@/models/Course';
 import Lesson from '@/models/Lesson';
-import User from '@/models/User';
-import Module from '@/models/Module';
-import mongoose, { Types } from 'mongoose';
+import User, { IUser } from '@/models/User';
+import Module, { IModule } from '@/models/Module';
+import mongoose, { Types, Document } from 'mongoose';
 
 // Helper function to find next/prev lesson IDs
 async function findAdjacentLessons(courseId: Types.ObjectId, currentLessonId: string): Promise<{ prevLessonId?: string; nextLessonId?: string }> {
@@ -18,17 +18,16 @@ async function findAdjacentLessons(courseId: Types.ObjectId, currentLessonId: st
         path: 'lessons',
         model: Lesson,
         options: { sort: { order: 1 } },
-        select: '_id' // Only need IDs for navigation
+        select: '_id'
       }
-    })
-    .lean();
+    });
 
   if (!course || !course.modules) return {};
 
   const allLessonIds: string[] = [];
-  course.modules.forEach((module: any) => {
+  (course.modules as IModule[]).forEach((module) => {
     if (module.lessons) {
-      module.lessons.forEach((lesson: any) => {
+      (module.lessons as { _id: Types.ObjectId }[]).forEach((lesson) => {
         allLessonIds.push(lesson._id.toString());
       });
     }
@@ -46,9 +45,8 @@ async function findAdjacentLessons(courseId: Types.ObjectId, currentLessonId: st
 // GET handler for a specific lesson
 export async function GET(
   request: Request,
-  context: any // Accept any to allow for async params
+  context: any
 ) {
-  // Get userId from Clerk
   const { userId } = await auth();
   const params = await context.params;
   const { slug, lessonId } = params;
@@ -65,20 +63,19 @@ export async function GET(
     await connect();
 
     // 1. Find the course by slug
-    const course = await Course.findOne({ slug }).select('_id').lean();
+    const course = await Course.findOne({ slug }).select('_id');
     if (!course) {
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
     const courseId = course._id;
     const courseIdStr = courseId.toString();
 
-    // 2. Check user enrollment
-    const user = await User.findOne({ clerkId: userId }).select('enrolledCourses progress').lean();
+    // 2. Fetch the full user document to access progress consistently
+    const user = await User.findOne({ clerkId: userId }).select('enrolledCourses progress');
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Debug logs for lesson lookup
     console.log('[LESSON_GET] Looking for lesson', { lessonId, courseId: courseIdStr, slug });
 
     // 3. Find the lesson
@@ -89,16 +86,30 @@ export async function GET(
       return NextResponse.json({ error: 'Lesson not found' }, { status: 404 });
     }
 
-    // 4. Check if the lesson belongs to the course
-    const moduleContainingLesson = await Module.findOne({ course: courseId, lessons: lessonId }).select('_id').lean();
+    // 4. Check if the lesson belongs to the course (using courseId ObjectId)
+    const moduleContainingLesson = await Module.findOne({ course: courseId, lessons: new Types.ObjectId(lessonId) }).select('_id').lean();
     if (!moduleContainingLesson) {
       return NextResponse.json({ error: 'Forbidden: Lesson does not belong to this course' }, { status: 403 });
     }
 
-    // 5. Determine completion status
-    const courseProgress = user.progress ? user.progress[courseIdStr] : [];
-    const completedLessons = Array.isArray(courseProgress) ? courseProgress : [];
-    const isCompleted = completedLessons.some((id: Types.ObjectId | string) => id.toString() === lessonId);
+    // 5. Determine completion status consistently with POST route
+    let isCompleted = false;
+    const courseProgress = user.progress.find(
+      (p) => p.courseId.equals(courseId)
+    );
+
+    if (courseProgress) {
+      try {
+        const lessonObjectId = new Types.ObjectId(lessonId);
+        isCompleted = courseProgress.completedLessons.some(
+          (id: Types.ObjectId) => id.equals(lessonObjectId)
+        );
+      } catch (e) {
+        console.error(`[LESSON_GET] Error converting lessonId ${lessonId} to ObjectId:`, e);
+      }
+    }
+
+    console.log(`[LESSON_GET] User ${userId} completion status for lesson ${lessonId} in course ${slug}: ${isCompleted}`);
 
     // 6. Find next/prev lesson IDs
     const { prevLessonId, nextLessonId } = await findAdjacentLessons(courseId, lessonId);

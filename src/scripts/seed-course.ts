@@ -34,11 +34,14 @@ const CourseSchema = new Schema({
   slug: { type: String, required: true, unique: true },
   description: { type: String, required: true },
   coverImage: { type: String, required: true },
-  price: { type: Number, required: true },
+  price: { type: Number, required: true }, // Original price in cents
+  salePrice: { type: Number, required: true }, // Sale price in cents
+  discount: { type: Number, required: true }, // Discount percentage
   stripePriceId: { type: String },
   stripeProductId: { type: String },
   authors: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   modules: [{ type: Schema.Types.ObjectId, ref: 'Module' }],
+  features: [{ type: String }], // Add features field to schema
   isPublished: { type: Boolean, default: false },
   prerequisites: [{ type: String }],
   level: { 
@@ -48,7 +51,13 @@ const CourseSchema = new Schema({
   },
   duration: { type: Number },
   featured: { type: Boolean, default: false },
-  enrollmentCount: { type: Number, default: 0 }
+  enrollmentCount: { type: Number, default: 0 },
+  instructor: { // Add instructor details to schema
+    name: { type: String, required: true },
+    title: { type: String, required: true },
+    bio: { type: String, required: true },
+    image: { type: String, required: true }
+  }
 }, { 
   timestamps: true 
 });
@@ -59,10 +68,28 @@ const aiCourse = {
   slug: "ai-monetization",
   description: "Learn how to create profitable AI tools, content, and businesses in our comprehensive course led by industry experts.",
   coverImage: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1000&auto=format&fit=crop",
-  price: 19900, // $199.00 in cents
+  // Define original price and sale price
+  price: 39800, // $398.00 in cents (Original Price)
+  salePrice: 19900, // $199.00 in cents (Sale Price)
+  discount: 50, // 50% discount
   level: "intermediate",
   duration: 345, // Total minutes
   featured: true,
+  features: [
+    "Learn from industry experts",
+    "Step-by-step guides for building your AI product",
+    "Lifetime access to course materials",
+    "Private community of AI entrepreneurs",
+    "Real case studies of successful AI businesses",
+    "Templates and tools worth $2,000+"
+  ],
+  // Add instructor details
+  instructor: {
+    name: "Dr. Richard Thompson",
+    title: "Senior AI Consultant & Professor Emeritus",
+    bio: "Dr. Richard Thompson is a seasoned AI expert with over 40 years of experience in computer science and artificial intelligence. As a former university professor and industry consultant, he has guided Fortune 500 companies and mentored the next generation of AI innovators. His passion lies in making advanced AI accessible and practical for real-world business success.",
+    image: "/testimonials/instructor.jpg" // Profile image of a white man in his 60s
+  },
   enrollmentCount: 0,
   prerequisites: [
     "Understand the fundamentals of AI technologies",
@@ -883,9 +910,18 @@ async function seedCourse() {
     // Create a new object excluding modules instead of using delete
     const { modules: modulesData, ...courseBaseData } = aiCourse;
 
+    // Ensure price, salePrice, discount, and features are included
+    const courseDataToSave = {
+      ...courseBaseData,
+      price: aiCourse.price,
+      salePrice: aiCourse.salePrice,
+      discount: aiCourse.discount,
+      features: aiCourse.features, // Explicitly include features
+    };
+
     const courseDoc = await Course.findOneAndUpdate(
       { slug: aiCourse.slug },
-      courseBaseData, // Use the object without modules
+      courseDataToSave, // Use the updated object with price fields
       { new: true, upsert: true, setDefaultsOnInsert: true, session: session }
     );
     const courseId = courseDoc._id;

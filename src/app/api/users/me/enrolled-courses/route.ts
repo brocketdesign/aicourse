@@ -1,134 +1,131 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { connect } from '@/lib/mongodb';
-import User from '@/models/User';
-import Course from '@/models/Course';
+import User, { IUser } from '@/models/User';
+import Course, { ICourse } from '@/models/Course';
 import Module from '@/models/Module';
 import Lesson from '@/models/Lesson';
-import mongoose from 'mongoose';
+import mongoose, { Types, PopulatedDoc } from 'mongoose';
+
+export const dynamic = 'force-dynamic';
 
 // Helper function to count total lessons in a course
 async function countLessonsInCourse(courseId: mongoose.Types.ObjectId): Promise<number> {
   try {
-    // Add logging at the start of the helper function
-    console.log(`[countLessonsInCourse] Counting lessons for course ID: ${courseId}`);
-    const course = await Course.findById(courseId).populate({
-      path: 'modules',
-      select: '_id', // Select only _id for modules
-      populate: {
-        path: 'lessons',
-        model: Lesson, // Explicitly specify model here
-        select: '_id' // Only count lessons
-      }
-    }).lean();
+    console.log(`[countLessonsInCourse] Counting lessons for course ID: ${courseId} - Revised Approach`);
+    // 1. Find the course and get its module IDs
+    const course = await Course.findById(courseId).select('modules').lean(); // Only need module IDs
 
-    if (!course || !course.modules) {
+    if (!course || !course.modules || !Array.isArray(course.modules) || course.modules.length === 0) {
       console.log(`[countLessonsInCourse] Course ${courseId} not found or has no modules.`);
       return 0;
     }
 
+    // Ensure module IDs are correctly typed as ObjectIds
+    const moduleIds = course.modules.map(id => new Types.ObjectId(id));
+    console.log(`[countLessonsInCourse] Found ${moduleIds.length} module IDs for course ${courseId}.`);
+
+    // 2. Count lessons for each module
     let totalLessons = 0;
-    // Ensure modules and lessons are arrays before iterating
-    if (Array.isArray(course.modules)) {
-      for (const module of course.modules as any[]) { // Cast needed due to lean/populate typing
-        if (Array.isArray(module.lessons)) {
-          totalLessons += module.lessons.length;
-        }
+    for (const moduleId of moduleIds) {
+      try {
+        // Use countDocuments to efficiently count lessons associated with the module
+        const lessonCount = await Lesson.countDocuments({ module: moduleId });
+        console.log(`[countLessonsInCourse] Module ${moduleId}: Found ${lessonCount} lessons.`);
+        totalLessons += lessonCount;
+      } catch (countError) {
+        console.error(`[countLessonsInCourse] Error counting lessons for module ${moduleId}:`, countError);
+        // Continue counting other modules, but log the error
       }
     }
-    console.log(`[countLessonsInCourse] Course ${courseId} has ${totalLessons} lessons.`);
+
+    console.log(`[countLessonsInCourse] Course ${courseId} total lessons calculated: ${totalLessons}.`);
     return totalLessons;
   } catch (error) {
     console.error(`[countLessonsInCourse] Error counting lessons for course ${courseId}:`, error);
-    return 0; // Return 0 on error to avoid breaking the main route
+    return 0; // Return 0 on error
   }
 }
 
 export async function GET(request: Request) {
-  // Add logging at the start of the GET handler
-  console.log('[API /api/users/me/enrolled-courses] Received GET request.');
-  const { userId } = await auth(); // Await here as we need the userId value
+  console.log('[API /api/users/me/enrolled-courses] Received GET request');
+  const authResult = await auth();
+  const userId = authResult?.userId;
 
   if (!userId) {
-    console.error('[API /api/users/me/enrolled-courses] Unauthorized: No userId found.');
+    console.error('[API /api/users/me/enrolled-courses] Unauthorized: No userId');
     return new NextResponse('Unauthorized', { status: 401 });
   }
-  // Log the authenticated user ID
-  console.log(`[API /api/users/me/enrolled-courses] Authenticated user: ${userId}`);
 
   try {
-    // Log before connecting to DB
-    console.log('[API /api/users/me/enrolled-courses] Connecting to database...');
     await connect();
-    // Log after successful connection
-    console.log('[API /api/users/me/enrolled-courses] Database connected.');
+    console.log(`[API /api/users/me/enrolled-courses] DB connected. Fetching user for clerkId: ${userId}`);
 
-    // Log before finding the user
-    console.log(`[API /api/users/me/enrolled-courses] Finding user with clerkId: ${userId}`);
     const user = await User.findOne({ clerkId: userId })
       .populate({
         path: 'enrolledCourses',
-        model: Course, // Explicitly specify the model
-        select: 'title slug description imageUrl price modules _id' // Ensure _id is selected
-      })
-      .lean(); // Use lean for read-only operations
+        model: Course,
+        select: 'title slug description coverImage price modules _id'
+      });
 
     if (!user) {
       console.error(`[API /api/users/me/enrolled-courses] User not found in DB for clerkId: ${userId}`);
       return new NextResponse('User not found', { status: 404 });
     }
-    // Log after finding the user and the number of enrolled courses
     console.log(`[API /api/users/me/enrolled-courses] Found user: ${user._id}`);
     console.log(`[API /api/users/me/enrolled-courses] User has ${user.enrolledCourses?.length || 0} enrolled courses.`);
 
-    // Ensure enrolledCourses is an array
-    const enrolledCourses = Array.isArray(user.enrolledCourses) ? user.enrolledCourses : [];
+    console.log('[API /api/users/me/enrolled-courses] Raw enrolled courses data fetched:', JSON.stringify(user.enrolledCourses, null, 2));
+
+    const enrolledCourses = (user.enrolledCourses as PopulatedDoc<ICourse>[]) || [];
 
     const enrolledCoursesWithProgress = await Promise.all(
-      enrolledCourses.map(async (course: any) => { // Use 'any' carefully, consider defining a populated type
-        if (!course || !course._id) {
-          // Log if skipping an invalid course object
-          console.warn('[API /api/users/me/enrolled-courses] Skipping invalid course object in enrolledCourses:', course);
-          return null; // Handle potential null/undefined courses in the array
+      enrolledCourses.map(async (course) => {
+        if (!course || typeof course !== 'object' || !course._id) {
+          console.warn('[API /api/users/me/enrolled-courses] Skipping invalid/unpopulated course object:', course);
+          return null;
         }
-        const courseIdStr = course._id.toString();
-        // Log which course is being processed
+
+        const courseId = course._id as mongoose.Types.ObjectId;
+        const courseIdStr = courseId.toString();
         console.log(`[API /api/users/me/enrolled-courses] Processing course: ${course.title} (${courseIdStr})`);
 
-        // Safely access progress map
-        const userProgressMap = user.progress instanceof Map ? user.progress : new Map();
-        const completedLessons = userProgressMap.get(courseIdStr) || [];
-        // Log the number of completed lessons found
-        console.log(`[API /api/users/me/enrolled-courses] Course ${courseIdStr}: Found ${completedLessons.length} completed lessons in progress map.`);
+        const courseProgressData = user.progress.find(
+          (p: { courseId: Types.ObjectId; completedLessons: Types.ObjectId[] | string[] }) => p.courseId.equals(courseId)
+        );
 
-        const totalLessons = await countLessonsInCourse(course._id);
+        const completedLessons = courseProgressData?.completedLessons?.map(id => id.toString()) || [];
+        console.log(`[API /api/users/me/enrolled-courses] Course ${courseIdStr}: Found ${completedLessons.length} completed lessons.`);
 
-        const progressPercentage = totalLessons > 0
-          ? Math.round((completedLessons.length / totalLessons) * 100)
+        const totalLessonsCount = await countLessonsInCourse(courseId);
+
+        const progressPercentage = totalLessonsCount > 0
+          ? Math.round((completedLessons.length / totalLessonsCount) * 100)
           : 0;
-        // Log the calculated progress
-        console.log(`[API /api/users/me/enrolled-courses] Course ${courseIdStr}: Progress calculated: ${progressPercentage}% (${completedLessons.length}/${totalLessons})`);
+        console.log(`[API /api/users/me/enrolled-courses] Course ${courseIdStr}: Progress calculated: ${progressPercentage}% (${completedLessons.length}/${totalLessonsCount})`);
+
+        const coverImage = (course as any).coverImage || undefined;
 
         return {
-          ...course,
+          _id: courseIdStr,
+          title: course.title,
+          slug: course.slug,
+          description: course.description,
+          coverImage: coverImage,
           progress: progressPercentage,
           completedLessonsCount: completedLessons.length,
-          totalLessonsCount: totalLessons,
+          totalLessonsCount: totalLessonsCount,
         };
       })
     );
 
-    // Filter out any null results from the map (e.g., from invalid course objects)
     const validCourses = enrolledCoursesWithProgress.filter(course => course !== null);
-    // Log the final count of courses being returned
     console.log(`[API /api/users/me/enrolled-courses] Returning ${validCourses.length} valid courses with progress.`);
 
     return NextResponse.json(validCourses);
 
   } catch (error) {
-    // Log the full error in the catch block
     console.error('[API /api/users/me/enrolled-courses] Internal Server Error:', error);
-    // Log the specific error message
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new NextResponse(`Internal Server Error: ${errorMessage}`, { status: 500 });
   }

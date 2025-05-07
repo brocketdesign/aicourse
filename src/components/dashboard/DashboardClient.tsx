@@ -12,7 +12,7 @@ interface EnrolledCourse {
   title: string;
   slug: string;
   description: string;
-  imageUrl?: string;
+  coverImage?: string; // Updated to use coverImage
   progress: number; // Percentage
   completedLessonsCount: number;
   totalLessonsCount: number;
@@ -81,7 +81,7 @@ export default function DashboardClient() {
             <Link key={course._id} href={`/courses/${course.slug}`} className="group block bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border border-gray-100">
               <div className="relative h-48 w-full">
                 <Image
-                  src={course.imageUrl || '/placeholder-course.jpg'} // Provide a placeholder
+                  src={course.coverImage || '/placeholder-course.jpg'} // Use coverImage instead of imageUrl
                   alt={course.title}
                   layout="fill"
                   objectFit="cover"

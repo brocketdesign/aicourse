@@ -40,7 +40,8 @@ export default function LessonPageClient() {
     setError(null);
     try {
       // Assume an API endpoint exists to fetch lesson details and completion status
-      const response = await fetch(`/api/courses/${slug}/lessons/${lessonId}`);
+      // Add { cache: 'no-store' } to ensure fresh data
+      const response = await fetch(`/api/courses/${slug}/lessons/${lessonId}`, { cache: 'no-store' });
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('Lesson not found.');
@@ -74,10 +75,12 @@ export default function LessonPageClient() {
     const currentlyCompleted = lessonData.isCompleted;
 
     try {
+      // Add { cache: 'no-store' } to ensure fresh data interaction
       const response = await fetch(`/api/courses/${slug}/progress`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lessonId }),
+        cache: 'no-store', // Add cache control
       });
 
       if (!response.ok) {
@@ -116,8 +119,8 @@ export default function LessonPageClient() {
       console.error('Failed to update progress:', error);
       // Use the error message thrown above or a default
       toast.error(error?.message || "An unexpected error occurred while updating progress.");
-      // Optionally revert optimistic update here if needed
-      // setLessonData(prev => prev ? { ...prev, isCompleted: currentlyCompleted } : null);
+      // Revert optimistic update on failure
+      setLessonData(prev => prev ? { ...prev, isCompleted: currentlyCompleted } : null);
     } finally {
       setIsUpdating(false);
     }
