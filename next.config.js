@@ -13,6 +13,11 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
+      // Allow s47434.pcdn.co for external course images
+      {
+        protocol: 'https',
+        hostname: 's47434.pcdn.co',
+      },
       // Add other allowed hostnames here if needed
     ],
   },

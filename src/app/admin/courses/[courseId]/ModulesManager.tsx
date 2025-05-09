@@ -62,9 +62,17 @@ export function ModulesManager({ courseId }: ModulesManagerProps) {
     setIsLoading(true);
     setError(null);
     try {
+      console.log("[ModulesManager] Fetching modules for courseId:", courseId);
       const response = await fetch(`/api/admin/courses/${courseId}/modules`);
       if (!response.ok) {
-        throw new Error('Failed to fetch modules');
+        let errorBody = null;
+        try {
+          errorBody = await response.json();
+        } catch (jsonErr) {
+          errorBody = { message: 'Failed to parse error response as JSON' };
+        }
+        console.error(`[ModulesManager] Failed to fetch modules. Status: ${response.status}`, errorBody);
+        throw new Error(errorBody.message || 'Failed to fetch modules');
       }
       const data: Module[] = await response.json();
       // Sort modules by order before setting state

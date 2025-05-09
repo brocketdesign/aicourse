@@ -29,7 +29,7 @@ export default function CourseEditPage({ params }: CourseEditPageProps) {
       <CourseEditForm courseId={courseId} />
 
       {/* Render the ModulesManager component below the form */}
-      <ModulesManager />
+      <ModulesManager courseId={courseId} />
 
       {/* Add Toaster here to enable toast notifications from the form and module manager */}
       <Toaster richColors position="top-right" />
