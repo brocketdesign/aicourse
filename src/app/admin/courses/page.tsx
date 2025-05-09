@@ -18,7 +18,8 @@ async function getData(): Promise<Course[]> {
       console.error("Error body:", errorBody);
       throw new Error(`Failed to fetch courses: ${res.statusText}`);
     }
-    const data = await res.json();
+    // Explicitly type the data from the API
+    const data: any[] = await res.json();
     console.log("Courses data fetched successfully:", data);
     // Ensure _id is present and price is a number
     return data.map((course: any) => ({
@@ -29,7 +30,8 @@ async function getData(): Promise<Course[]> {
     }));
   } catch (error) {
     console.error("Error in getData:", error);
-    toast.error("Could not load courses. Please try again later.");
+    // Type the error
+    toast.error(`Could not load courses: ${(error as Error).message}. Please try again later.`);
     return []; // Return empty array on error
   }
 }

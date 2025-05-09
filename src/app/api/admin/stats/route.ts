@@ -1,22 +1,22 @@
 import { NextResponse } from 'next/server';
 import { connect } from '@/lib/mongodb';
 import User from '@/models/User';
-import Course from '@/models/Course';
+// import Course from '@/models/Course'; // Course is not used
 import Payment from '@/models/Payment'; // Import the Payment model
-import { isAdmin } from '@/services/user'; // Assuming you have an isAdmin check
+// import { isAdmin } from '@/services/user'; // Assuming you have an isAdmin check
 
 // Helper function to calculate percentage change
-const calculatePercentageChange = (current: number, previous: number): string => {
+/* const calculatePercentageChange = (current: number, previous: number): string => {
   if (previous === 0) {
     return current > 0 ? '+∞%' : '0%'; // Handle division by zero
   }
   const change = ((current - previous) / previous) * 100;
   return `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
-};
+}; */
 
 export async function GET() {
   // Optional: Add authentication and authorization check
-  // const authorized = await isAdmin();
+  // const authorized = await isAdmin(); // Make sure isAdmin is an async function if used
   // if (!authorized) {
   //   return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   // }
@@ -24,17 +24,18 @@ export async function GET() {
   try {
     await connect();
 
-    // --- Calculate Stats ---
+    const thirtyDaysAgo = new Date(); // For previous period calculation example
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     // 1. Total Revenue (sum of all successful payments)
-    const revenueResult = await Payment.aggregate([
-      { $match: { status: 'succeeded' } }, // Only successful payments
-      { $group: { _id: null, totalAmount: { $sum: '$amount' } } }
+    // Explicitly type revenueAggregation
+    const revenueAggregation: any[] = await Payment.aggregate([
+      { $match: { status: 'succeeded' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
-    const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalAmount / 100 : 0; // Amount is in cents
+    const totalRevenue = revenueAggregation.length > 0 ? revenueAggregation[0].total / 100 : 0; // Convert cents to dollars
 
-    // 2. Active Students (count users with role 'student' or count unique paying users)
-    // Option A: Count users with role 'student'
+    // 2. Active Students (count of users with role 'student' - adjust as needed for your definition of active)
     const totalStudents = await User.countDocuments({ role: 'student' });
     // Option B: Count unique users who made a successful payment
     // const uniquePayingUsers = await Payment.distinct('userId', { status: 'succeeded' });
@@ -44,12 +45,9 @@ export async function GET() {
     const totalEnrollments = await Payment.countDocuments({ status: 'succeeded' });
 
     // 4. Course Completion Rate (Placeholder - requires detailed progress tracking)
-    // This is complex and depends heavily on how lesson completion is tracked per user.
-    // For now, we'll use a placeholder or omit it.
     const courseCompletionRate = 72.5; // Placeholder
 
     // 5. Churn Rate (Placeholder - requires tracking subscription cancellations or inactivity)
-    // This is also complex. Placeholder for now.
     const churnRate = 3.2; // Placeholder
 
     // --- Calculate Changes (vs. Previous Period - simplified example: vs. all time before last month) ---
@@ -59,7 +57,6 @@ export async function GET() {
     const studentsChange = '+12.3%'; // Placeholder
     const completionChange = '+4.8%'; // Placeholder
     const churnChange = '-1.5%'; // Placeholder (Note: decrease might be positive)
-
 
     const stats = {
       totalRevenue: {
@@ -93,6 +90,7 @@ export async function GET() {
 
   } catch (error) {
     console.error('Error fetching admin stats:', error);
-    return NextResponse.json({ error: 'Failed to fetch admin statistics' }, { status: 500 });
+    // Type the error
+    return NextResponse.json({ error: `Failed to fetch admin statistics: ${(error as Error).message}` }, { status: 500 });
   }
 }

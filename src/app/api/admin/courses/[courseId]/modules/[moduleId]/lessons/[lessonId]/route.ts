@@ -1,17 +1,28 @@
 // src/app/api/admin/courses/[courseId]/modules/[moduleId]/lessons/[lessonId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { connect } from '@/lib/mongodb';
-import Lesson from '@/models/Lesson';
 import Module from '@/models/Module';
-import mongoose from 'mongoose'; // Import mongoose
+import Lesson, { ILesson } from '@/models/Lesson'; // Import ILesson
+import mongoose from 'mongoose';
 
-// Helper function to serialize lesson
-function serializeLesson(lesson: any) {
-    if (!lesson) return null;
-    const serialized = lesson.toJSON ? lesson.toJSON() : { ...lesson };
-    if (serialized._id) serialized._id = serialized._id.toString();
-    if (serialized.module) serialized.module = serialized.module.toString();
-    return serialized;
+// Helper to serialize lesson (convert ObjectId/Date to string, etc.)
+// Explicitly type the lesson parameter
+function serializeLesson(lesson: ILesson) {
+    return {
+        _id: lesson._id.toString(),
+        title: lesson.title,
+        content: lesson.content,
+        order: lesson.order,
+        module: lesson.module.toString(),
+        // Add other fields from ILesson as needed
+        // Example: Assuming ILesson has these from your screenshot context
+        contentType: (lesson as any).contentType, // Cast to any if contentType is not in ILesson yet
+        mediaUrl: (lesson as any).mediaUrl,
+        duration: (lesson as any).duration,
+        isPublished: (lesson as any).isPublished,
+        createdAt: lesson.createdAt.toISOString(),
+        updatedAt: lesson.updatedAt.toISOString(),
+    };
 }
 
 // GET a specific lesson
@@ -26,7 +37,8 @@ export async function GET(request: NextRequest, { params }: { params: { courseId
 
     try {
         // Find the lesson and verify it belongs to the module
-        const lesson = await Lesson.findOne({ _id: lessonId, module: moduleId });
+        // Explicitly type the lesson variable
+        const lesson: ILesson | null = await Lesson.findOne({ _id: lessonId, module: moduleId });
         if (!lesson) {
             return new NextResponse("Lesson not found or does not belong to this module", { status: 404 });
         }
@@ -52,7 +64,7 @@ export async function PUT(request: NextRequest, { params }: { params: { courseId
         order,
         duration,
         isPublished
-    }: Partial<InstanceType<typeof Lesson>> = body;
+    }: Partial<ILesson> = body; // Use ILesson here
 
     // Validate IDs
     if (!mongoose.Types.ObjectId.isValid(moduleId) || !mongoose.Types.ObjectId.isValid(lessonId)) {
@@ -66,17 +78,19 @@ export async function PUT(request: NextRequest, { params }: { params: { courseId
 
     try {
         // Construct update object with only provided fields
-        const updateData: any = {};
+        // Explicitly type updateData
+        const updateData: Partial<ILesson> = {};
         if (title !== undefined) updateData.title = title;
-        if (description !== undefined) updateData.description = description;
+        if (description !== undefined) (updateData as any).description = description; // Add description if it's part of your lesson schema
         if (content !== undefined) updateData.content = content;
-        if (contentType !== undefined) updateData.contentType = contentType;
-        if (mediaUrl !== undefined) updateData.mediaUrl = mediaUrl;
+        if (contentType !== undefined) (updateData as any).contentType = contentType;
+        if (mediaUrl !== undefined) (updateData as any).mediaUrl = mediaUrl;
         if (order !== undefined) updateData.order = order;
-        if (duration !== undefined) updateData.duration = duration;
-        if (isPublished !== undefined) updateData.isPublished = isPublished;
+        if (duration !== undefined) (updateData as any).duration = duration;
+        if (isPublished !== undefined) (updateData as any).isPublished = isPublished;
 
-        const updatedLesson = await Lesson.findOneAndUpdate(
+        // Explicitly type updatedLesson
+        const updatedLesson: ILesson | null = await Lesson.findOneAndUpdate(
             { _id: lessonId, module: moduleId }, // Ensure lesson belongs to the module
             { $set: updateData },
             { new: true, runValidators: true }
@@ -92,9 +106,8 @@ export async function PUT(request: NextRequest, { params }: { params: { courseId
     } catch (error: any) {
         console.error("[LESSON_PUT]", error);
         if (error.name === 'ValidationError') {
-            let errors = {};
+            const errors: Record<string, string> = {};
             Object.keys(error.errors).forEach((key) => {
-                //@ts-ignore
                 errors[key] = error.errors[key].message;
             });
             return new NextResponse(JSON.stringify({ message: "Validation Error", errors }), { status: 400 });
@@ -118,7 +131,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { cours
 
     try {
         // Find and delete the lesson, ensuring it belongs to the module
-        const deletedLesson = await Lesson.findOneAndDelete({ _id: lessonId, module: moduleId }).session(session);
+        // Explicitly type deletedLesson
+        const deletedLesson: ILesson | null = await Lesson.findOneAndDelete({ _id: lessonId, module: moduleId }).session(session);
 
         if (!deletedLesson) {
             await session.abortTransaction();

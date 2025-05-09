@@ -47,15 +47,17 @@ interface CourseEditFormProps {
 
 // Define a more specific type for the fetched course data, including _id
 interface FetchedCourse extends Course {
-    _id: string;
-    // Add any other fields returned by the API but not in the basic Course type
+  _id: string; // Ensure _id is part of the type
+  authors: string[]; // Assuming authors are an array of strings (IDs) for the form
+  modules: any[]; // Define more specifically if possible, or use a relevant interface
 }
 
 export function CourseEditForm({ courseId }: CourseEditFormProps) {
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [isSubmitting, setIsSubmitting] = useState(false); // Added to fix runtime error
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  // Explicitly type the form state
   const form = useForm<CourseEditFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: { // Initialize with empty or default values
@@ -68,55 +70,62 @@ export function CourseEditForm({ courseId }: CourseEditFormProps) {
     },
   });
 
-  // Fetch course data on component mount
   useEffect(() => {
-    const fetchCourse = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/admin/courses/${courseId}`);
-        if (!response.ok) {
-          if (response.status === 404) {
-            toast.error("Course not found.");
-            router.push("/admin/courses"); // Redirect if not found
-          } else {
-            throw new Error(`Failed to fetch course data (${response.status})`);
+    if (courseId && courseId !== 'new') {
+      const fetchCourse = async () => {
+        try {
+          setIsLoading(true);
+          const response = await fetch(`/api/admin/courses/${courseId}`);
+          if (!response.ok) {
+            throw new Error('Failed to fetch course data');
           }
-          return; // Stop execution if fetch failed
+          // Explicitly type the fetched data
+          const data: FetchedCourse = await response.json();
+          // Transform price from cents to dollars for the form
+          const formData = {
+            ...data,
+            price: data.price ? data.price / 100 : 0, // Convert cents to dollars
+            // Ensure other fields match form schema, provide defaults if necessary
+            title: data.title || '',
+            description: data.description || '',
+            coverImage: data.coverImage || '',
+            level: data.level || 'beginner',
+            isPublished: data.isPublished || false,
+          };
+          form.reset(formData);
+        } catch (err) {
+          // Type the error
+          setError((err as Error).message);
+          toast.error(`Error fetching course: ${(err as Error).message}`);
+        } finally {
+          setIsLoading(false);
         }
-        const data: FetchedCourse = await response.json(); // Use FetchedCourse type
+      };
+      fetchCourse();
+    } else {
+      setIsLoading(false);
+      // Initialize form with default values for a new course
+      form.reset({
+        title: "",
+        description: "",
+        price: 0,
+        coverImage: "",
+        level: "beginner",
+        isPublished: false,
+      });
+    }
+  }, [courseId, form]);
 
-        // Convert price from cents to dollars for the form
-        const formData = {
-          ...data,
-          price: data.price / 100,
-          coverImage: data.coverImage || "", // Ensure coverImage is not null/undefined
-          level: data.level || "", // Ensure level is not null/undefined
-        };
-
-        form.reset(formData); // Populate form with fetched data
-        toast.success("Course data loaded.");
-      } catch (error: any) {
-        console.error("Fetch error:", error);
-        toast.error(error.message || "Failed to load course data.");
-        // Optionally redirect or show error message
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchCourse();
-  }, [courseId, form, router]); // Added router to dependencies
-
-  // Handle form submission
-  async function onSubmit(values: CourseEditFormValues) {
+  // Explicitly type the onSubmit function's data parameter
+  async function onSubmit(data: CourseEditFormValues) {
     setIsSubmitting(true);
-    const loadingToast = toast.loading("Updating course...");
+    const loadingToast = toast.loading(courseId === 'new' ? "Creating course..." : "Updating course...");
 
     try {
       const response = await fetch(`/api/admin/courses/${courseId}`, {
-        method: "PUT",
+        method: courseId === 'new' ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values), // Price is already in dollars here, API will convert back
+        body: JSON.stringify(data), // Price is already in dollars here, API will convert back
       });
 
       if (!response.ok) {
@@ -125,19 +134,21 @@ export function CourseEditForm({ courseId }: CourseEditFormProps) {
       }
 
       toast.dismiss(loadingToast);
-      toast.success("Course updated successfully!");
-      router.push("/admin/courses"); // Redirect back to the list
-      router.refresh(); // Refresh server components
-    } catch (error: any) {
-      console.error("Submit error:", error);
-      toast.dismiss(loadingToast);
-      toast.error(`Update failed: ${error.message}`);
+      toast.success(courseId === 'new' ? "Course created successfully!" : "Course updated successfully!");
+      router.push('/admin/courses'); // Redirect to courses list
+      router.refresh(); // Refresh page to reflect changes
+    } catch (err) {
+      // Type the error
+      setError((err as Error).message);
+      // Display more specific error from backend if available
+      const apiError = err instanceof Error ? (err as any).response?.data?.message || (err as any).response?.data?.error : 'An unexpected error occurred';
+      toast.error(courseId === 'new' ? `Failed to create course: ${apiError}` : `Failed to update course: ${apiError}`);
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  if (isLoading) {
+  if (isLoading && courseId !== 'new') {
     return <p>Loading course details...</p>; // Or a spinner component
   }
 

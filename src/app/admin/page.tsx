@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface StatData {
   value: number | string;
@@ -81,13 +83,15 @@ function SimpleBarChart({
   valueKey: "amount" | "count";
   labelKey: "month";
 }) {
-  const validData = data.filter((d) => typeof d[valueKey] === "number");
+  // Ensure data is always an array
+  const safeData = Array.isArray(data) ? data : [];
+  const validData = safeData.filter((d) => typeof d[valueKey] === "number");
   const max = validData.length > 0 ? Math.max(...validData.map((d) => d[valueKey]!)) : 1;
 
   return (
     <div className="relative w-full h-40 mt-6">
       <div className="flex items-end justify-between h-32 gap-3">
-        {data.map((d, i) => (
+        {safeData.map((d, i) => (
           <div key={i} className="relative flex flex-col items-center flex-1">
             <div
               className="w-full bg-blue-500 rounded-t relative transition-height duration-500 ease-out"
@@ -110,8 +114,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [revenueData, setRevenueData] = useState<ChartDataPoint[]>([]);
-  const [enrollmentData, setEnrollmentData] = useState<ChartDataPoint[]>([]);
+  const [revenueData, setRevenueData] = useState<ChartDataPoint[]>([]); // Ensure default is an empty array
+  const [enrollmentData, setEnrollmentData] = useState<ChartDataPoint[]>([]); // Ensure default is an empty array
   const [recentEnrollments, setRecentEnrollments] = useState<RecentEnrollment[]>([]);
 
   useEffect(() => {
@@ -137,12 +141,12 @@ export default function AdminDashboard() {
         const recentEnrollmentsData = await recentRes.json();
 
         setStats(statsData);
-        setRevenueData(revenueChartData);
-        setEnrollmentData(enrollmentChartData);
+        setRevenueData(revenueChartData || []); // Ensure fallback to empty array
+        setEnrollmentData(enrollmentChartData || []); // Ensure fallback to empty array
         setRecentEnrollments(recentEnrollmentsData);
-      } catch (err: any) {
+      } catch (err) {
         console.error("Error fetching admin dashboard data:", err);
-        setError(err.message || "An unexpected error occurred");
+        setError(err instanceof Error ? err.message : "An unexpected error occurred");
       } finally {
         setLoading(false);
       }
@@ -152,13 +156,35 @@ export default function AdminDashboard() {
   }, []);
 
   const formatCurrency = (amount: number | string | undefined) => {
-    const numericAmount = typeof amount === "string" ? parseFloat(amount) : amount;
-    if (numericAmount === undefined || isNaN(numericAmount)) return "$0.00";
-    return `$${numericAmount.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+    if (amount === undefined) return '-';
+    const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(numericAmount)) return '-';
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(numericAmount);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-pulse h-40 bg-foreground/5 rounded"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <AlertTriangle className="w-16 h-16 text-red-500 mb-4" />
+        <h2 className="text-xl font-semibold text-red-600">Failed to Load Dashboard Data</h2>
+        <p className="text-red-400">Error: {error}</p>
+        <Button onClick={() => window.location.reload()} className="mt-4">
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -167,25 +193,8 @@ export default function AdminDashboard() {
         <p className="text-foreground/70">Overview of your course platform</p>
       </header>
 
-      {error && (
-        <div
-          className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6"
-          role="alert"
-        >
-          <strong className="font-bold">Error:</strong>
-          <span className="block sm:inline"> {error}</span>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {loading ? (
-          [...Array(4)].map((_, i) => (
-            <div
-              key={i}
-              className="bg-background/50 rounded-lg border border-black/10 dark:border-white/10 p-6 shadow-sm animate-pulse h-40"
-            ></div>
-          ))
-        ) : stats ? (
+        {stats ? (
           <>
             <StatsCard
               title="Total Revenue"
@@ -290,11 +299,7 @@ export default function AdminDashboard() {
             <h3 className="text-lg font-medium">Monthly Revenue</h3>
             <div className="text-sm text-foreground/60">Last 5 months</div>
           </div>
-          {loading ? (
-            <div className="animate-pulse h-40 bg-foreground/5 rounded"></div>
-          ) : (
-            <SimpleBarChart data={revenueData} valueKey="amount" labelKey="month" />
-          )}
+          <SimpleBarChart data={revenueData} valueKey="amount" labelKey="month" />
         </div>
 
         <div className="bg-background rounded-lg border border-black/10 dark:border-white/10 p-6 shadow-sm">
@@ -302,11 +307,7 @@ export default function AdminDashboard() {
             <h3 className="text-lg font-medium">New Enrollments</h3>
             <div className="text-sm text-foreground/60">Last 5 months</div>
           </div>
-          {loading ? (
-            <div className="animate-pulse h-40 bg-foreground/5 rounded"></div>
-          ) : (
-            <SimpleBarChart data={enrollmentData} valueKey="count" labelKey="month" />
-          )}
+          <SimpleBarChart data={enrollmentData} valueKey="count" labelKey="month" />
         </div>
       </div>
 
@@ -321,16 +322,7 @@ export default function AdminDashboard() {
           </Link>
         </div>
 
-        {loading ? (
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <div
-                key={i}
-                className="animate-pulse h-16 bg-foreground/5 rounded"
-              ></div>
-            ))}
-          </div>
-        ) : recentEnrollments.length > 0 ? (
+        {recentEnrollments.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>

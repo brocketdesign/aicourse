@@ -2,31 +2,34 @@
 import { NextResponse } from 'next/server';
 import { connect } from '@/lib/mongodb';
 import Course from '@/models/Course';
-import Module from '@/models/Module'; // Import Module model
+import Module, { IModule } from '@/models/Module'; // Import IModule
 import Lesson from '@/models/Lesson'; // Import Lesson model
 import mongoose from 'mongoose';
 import { auth } from "@clerk/nextjs/server"; // Import auth
 
 // Helper function to serialize module
-function serializeModule(module: any) {
-    if (!module) return null;
-    const serialized = module.toJSON ? module.toJSON() : { ...module };
-    if (serialized._id) serialized._id = serialized._id.toString();
-    if (serialized.course) serialized.course = serialized.course.toString();
-    if (Array.isArray(serialized.lessons)) {
-        serialized.lessons = serialized.lessons.map((l: any) => l?.toString?.() || l);
-    }
-    return serialized;
+// Explicitly type the module parameter
+function serializeModule(module: IModule) {
+    return {
+        _id: module._id.toString(),
+        title: module.title,
+        description: module.description,
+        order: module.order,
+        course: module.course.toString(),
+        lessons: module.lessons.map(lessonId => lessonId.toString()), // Assuming lessons are ObjectIds
+        createdAt: module.createdAt.toISOString(),
+        updatedAt: module.updatedAt.toISOString(),
+        isPublished: (module as any).isPublished, // Add isPublished if it exists on your IModule
+    };
 }
 
 // GET a specific module
 export async function GET(request: Request, { params }: { params: { courseId: string, moduleId: string } }) {
-  // TODO: Add proper authorization check for admin role
-  const authResult = await auth(); // Await the auth() call
-  if (!authResult?.userId) { // Check for userId on the resolved object
+  const authResult = await auth();
+  if (!authResult?.userId) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
-
+  await connect();
   const { courseId, moduleId } = params;
 
   if (!mongoose.Types.ObjectId.isValid(courseId) || !mongoose.Types.ObjectId.isValid(moduleId)) {
@@ -34,41 +37,23 @@ export async function GET(request: Request, { params }: { params: { courseId: st
   }
 
   try {
-    await connect();
-    // Find the module and verify it belongs to the course
-    const module = await Module.findOne({ _id: moduleId, course: courseId })
-        .populate({ // Optionally populate lessons
-            path: 'lessons',
-            model: Lesson,
-            options: { sort: { order: 1 } }
-        });
-
-    if (!module) {
+    // Explicitly type the module variable
+    const moduleData: IModule | null = await Module.findOne({ _id: moduleId, course: courseId }).populate('lessons');
+    if (!moduleData) {
       return NextResponse.json({ message: 'Module not found or does not belong to this course' }, { status: 404 });
     }
-
-    // Serialize populated lessons if needed
-    const serialized = serializeModule(module);
-    if (serialized && Array.isArray(module.lessons)) {
-        serialized.lessons = module.lessons.map((lesson: any) => {
-            const l = lesson.toJSON ? lesson.toJSON() : { ...lesson };
-            if (l._id) l._id = l._id.toString();
-            return l;
-        });
-    }
-
-    return NextResponse.json(serialized);
+    return NextResponse.json(serializeModule(moduleData));
   } catch (error) {
-    console.error('[API_ADMIN_COURSES_MODULE_GET]', error);
-    return NextResponse.json({ message: 'Failed to fetch module', error }, { status: 500 });
+    console.error('Error fetching module:', error);
+    // Type the error
+    return NextResponse.json({ message: 'Failed to fetch module', error: (error as Error).message }, { status: 500 });
   }
 }
 
 // PUT (update) a specific module
 export async function PUT(request: Request, { params }: { params: { courseId: string, moduleId: string } }) {
-  // TODO: Add proper authorization check for admin role
-  const authResult = await auth(); // Await the auth() call
-  if (!authResult?.userId) { // Check for userId on the resolved object
+  const authResult = await auth();
+  if (!authResult?.userId) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
@@ -79,40 +64,39 @@ export async function PUT(request: Request, { params }: { params: { courseId: st
   }
 
   try {
-    const body = await request.json();
+    // Explicitly type body
+    const body: Partial<IModule> = await request.json();
     // Exclude potentially harmful fields or fields managed elsewhere
     const { title, description, order, isPublished } = body;
-    const updateData: any = {};
+    // Explicitly type updateData
+    const updateData: Partial<IModule> = {};
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (order !== undefined) updateData.order = order;
-    if (isPublished !== undefined) updateData.isPublished = isPublished; // Assuming Module has isPublished
+    if (isPublished !== undefined) (updateData as any).isPublished = isPublished; // Add isPublished if it exists on your IModule
 
-    await connect();
-
-    // Find and update the module, ensuring it belongs to the correct course
-    const updatedModule = await Module.findOneAndUpdate(
-        { _id: moduleId, course: courseId },
-        { $set: updateData },
-        { new: true, runValidators: true }
-    );
+    // Explicitly type updatedModule
+    const updatedModule: IModule | null = await Module.findOneAndUpdate(
+      { _id: moduleId, course: courseId }, // Ensure module belongs to the course
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).populate('lessons');
 
     if (!updatedModule) {
       return NextResponse.json({ message: 'Module not found or does not belong to this course' }, { status: 404 });
     }
-
     return NextResponse.json(serializeModule(updatedModule));
   } catch (error) {
-    console.error('[API_ADMIN_COURSES_MODULE_PUT]', error);
-    return NextResponse.json({ message: 'Failed to update module', error }, { status: 500 });
+    console.error('Error updating module:', error);
+    // Type the error
+    return NextResponse.json({ message: 'Failed to update module', error: (error as Error).message }, { status: 500 });
   }
 }
 
 // DELETE a specific module
 export async function DELETE(request: Request, { params }: { params: { courseId: string, moduleId: string } }) {
-  // TODO: Add proper authorization check for admin role
-  const authResult = await auth(); // Await the auth() call
-  if (!authResult?.userId) { // Check for userId on the resolved object
+  const authResult = await auth();
+  if (!authResult?.userId) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
@@ -122,14 +106,14 @@ export async function DELETE(request: Request, { params }: { params: { courseId:
     return NextResponse.json({ message: 'Invalid ID format' }, { status: 400 });
   }
 
-  const session = await mongoose.startSession(); // Use transaction for multi-step delete
+  const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     await connect();
 
-    // Find the module to be deleted, ensuring it belongs to the course
-    const moduleToDelete = await Module.findOne({ _id: moduleId, course: courseId }).session(session);
+    // Explicitly type moduleToDelete
+    const moduleToDelete: IModule | null = await Module.findOne({ _id: moduleId, course: courseId }).session(session);
 
     if (!moduleToDelete) {
       await session.abortTransaction();
@@ -156,7 +140,8 @@ export async function DELETE(request: Request, { params }: { params: { courseId:
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error('[API_ADMIN_COURSES_MODULE_DELETE]', error);
-    return NextResponse.json({ message: 'Failed to delete module', error }, { status: 500 });
+    console.error('Error deleting module:', error);
+    // Type the error
+    return NextResponse.json({ message: 'Failed to delete module', error: (error as Error).message }, { status: 500 });
   }
 }

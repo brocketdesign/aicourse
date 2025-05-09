@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connect } from '@/lib/mongodb';
-import Payment from '@/models/Payment';
+import Payment, { IPayment } from '@/models/Payment'; // Import IPayment
 import User from '@/models/User';
 import Course from '@/models/Course';
-import { isAdmin } from '@/services/user'; // Optional: For authorization
+// import { isAdmin } from '@/services/user'; // Optional: For authorization
 
 export async function GET() {
   // Optional: Add authentication and authorization check
@@ -17,7 +17,8 @@ export async function GET() {
 
     // Fetch the 5 most recent successful payments
     // Populate user and course details
-    const recentPayments = await Payment.find({ status: 'succeeded' })
+    // Explicitly type recentPayments
+    const recentPayments: IPayment[] = await Payment.find({ status: 'succeeded' })
       .sort({ createdAt: -1 }) // Sort by creation date descending
       .limit(5) // Limit to 5 results
       .populate({
@@ -52,6 +53,7 @@ export async function GET() {
 
   } catch (error) {
     console.error('Error fetching recent enrollments:', error);
-    return NextResponse.json({ error: 'Failed to fetch recent enrollments' }, { status: 500 });
+    // Type the error
+    return NextResponse.json({ error: `Failed to fetch recent enrollments: ${(error as Error).message}` }, { status: 500 });
   }
 }

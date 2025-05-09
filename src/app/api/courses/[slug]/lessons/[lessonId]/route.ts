@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { connect } from '@/lib/mongodb';
-import Course, { ICourse } from '@/models/Course';
-import Lesson from '@/models/Lesson';
-import User, { IUser } from '@/models/User';
+import Course from '@/models/Course'; // Removed ICourse as it's not used
+import Lesson, { ILesson } from '@/models/Lesson'; // Import ILesson
+import User from '@/models/User'; // Removed IUser as it's not used
 import Module, { IModule } from '@/models/Module';
-import mongoose, { Types, Document } from 'mongoose';
+import mongoose, { Types } from 'mongoose'; // Removed Document as it's not used
 
 // Helper function to find next/prev lesson IDs
 async function findAdjacentLessons(courseId: Types.ObjectId, currentLessonId: string): Promise<{ prevLessonId?: string; nextLessonId?: string }> {
@@ -25,9 +25,9 @@ async function findAdjacentLessons(courseId: Types.ObjectId, currentLessonId: st
   if (!course || !course.modules) return {};
 
   const allLessonIds: string[] = [];
-  (course.modules as IModule[]).forEach((module) => {
-    if (module.lessons) {
-      (module.lessons as { _id: Types.ObjectId }[]).forEach((lesson) => {
+  (course.modules as IModule[]).forEach((moduleItem) => { // Renamed module to moduleItem to avoid conflict
+    if (moduleItem.lessons) {
+      (moduleItem.lessons as { _id: Types.ObjectId }[]).forEach((lesson) => {
         allLessonIds.push(lesson._id.toString());
       });
     }
@@ -45,69 +45,44 @@ async function findAdjacentLessons(courseId: Types.ObjectId, currentLessonId: st
 // GET handler for a specific lesson
 export async function GET(
   request: Request,
-  context: any
+  context: any // Consider defining a more specific type for context if possible
 ) {
-  const { userId } = await auth();
-  const params = await context.params;
-  const { slug, lessonId } = params;
+  const authResult = await auth();
+  const userId = authResult?.userId;
 
   if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  if (!mongoose.Types.ObjectId.isValid(lessonId)) {
-    return NextResponse.json({ error: 'Invalid Lesson ID' }, { status: 400 });
+    return new NextResponse('Unauthorized', { status: 401 });
   }
 
   try {
     await connect();
+    const { slug, lessonId } = context.params;
 
     // 1. Find the course by slug
-    const course = await Course.findOne({ slug }).select('_id');
+    const course = await Course.findOne({ slug });
     if (!course) {
-      return NextResponse.json({ error: 'Course not found' }, { status: 404 });
+      return new NextResponse('Course not found', { status: 404 });
     }
     const courseId = course._id;
-    const courseIdStr = courseId.toString();
 
-    // 2. Fetch the full user document to access progress consistently
-    const user = await User.findOne({ clerkId: userId }).select('enrolledCourses progress');
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    // 2. Find the lesson by ID and ensure it belongs to the course (via module)
+    // Explicitly type lesson
+    const lesson: ILesson | null = await Lesson.findById(lessonId).populate('module');
+    if (!lesson || (lesson.module as IModule)?.course?.toString() !== courseId.toString()) {
+      return new NextResponse('Lesson not found or does not belong to this course', { status: 404 });
     }
 
-    console.log('[LESSON_GET] Looking for lesson', { lessonId, courseId: courseIdStr, slug });
-
-    // 3. Find the lesson
-    const lesson = await Lesson.findById(lessonId).lean();
-    console.log('[LESSON_GET] Lesson lookup result:', lesson);
-    if (!lesson) {
-      console.log('[LESSON_GET] Lesson not found for lessonId:', lessonId);
-      return NextResponse.json({ error: 'Lesson not found' }, { status: 404 });
+    // 3. Check if user is enrolled in the course
+    const user = await User.findOne({ clerkId: userId });
+    if (!user || !user.enrolledCourses.some(id => id.toString() === courseId.toString())) {
+      // Optional: Allow access to previews or first few lessons for non-enrolled users
+      // For now, strict enrollment check
+      return new NextResponse('User not enrolled in this course', { status: 403 });
     }
 
-    // 4. Check if the lesson belongs to the course (using courseId ObjectId)
-    const moduleContainingLesson = await Module.findOne({ course: courseId, lessons: new Types.ObjectId(lessonId) }).select('_id').lean();
-    if (!moduleContainingLesson) {
-      return NextResponse.json({ error: 'Forbidden: Lesson does not belong to this course' }, { status: 403 });
-    }
-
-    // 5. Determine completion status consistently with POST route
-    let isCompleted = false;
-    const courseProgress = user.progress.find(
-      (p) => p.courseId.equals(courseId)
-    );
-
-    if (courseProgress) {
-      try {
-        const lessonObjectId = new Types.ObjectId(lessonId);
-        isCompleted = courseProgress.completedLessons.some(
-          (id: Types.ObjectId) => id.equals(lessonObjectId)
-        );
-      } catch (e) {
-        console.error(`[LESSON_GET] Error converting lessonId ${lessonId} to ObjectId:`, e);
-      }
-    }
+    // 4. Get user's progress for this lesson (isCompleted)
+    const userProgress = user.progress.find(p => p.courseId.toString() === courseId.toString());
+    const isCompleted = userProgress?.completedLessons.some(id => id.toString() === lessonId) || false;
 
     console.log(`[LESSON_GET] User ${userId} completion status for lesson ${lessonId} in course ${slug}: ${isCompleted}`);
 
@@ -123,6 +98,7 @@ export async function GET(
     });
   } catch (error) {
     console.error('[LESSON_GET]', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    // Type the error
+    return NextResponse.json({ error: `Internal Server Error: ${(error as Error).message}` }, { status: 500 });
   }
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { toast } from "react-toastify";
 
 interface UserData {
   id: string;
@@ -61,6 +62,30 @@ function UserTable({ users }: { users: UserData[] }) {
   );
 }
 
+async function getData(): Promise<UserData[]> {
+  try {
+    const res = await fetch("/api/admin/students");
+    if (!res.ok) {
+      throw new Error("Failed to fetch students");
+    }
+    // Explicitly type the data from the API
+    const data: any[] = await res.json();
+    return data.map((student) => ({
+      ...student,
+      id: student.id || student._id, // Ensure id is present
+      enrolledCoursesCount: student.enrolledCoursesCount || 0,
+      lastLogin: student.lastLogin || "Never",
+      createdAt: student.createdAt || new Date().toLocaleDateString(),
+    }));
+  } catch (error) {
+    // Type the error
+    toast.error(
+      `Could not load students: ${(error as Error).message}. Please try again later.`
+    );
+    return [];
+  }
+}
+
 export default function AdminStudentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,14 +97,7 @@ export default function AdminStudentsPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/admin/students");
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({})); // Try to parse error details
-          throw new Error(
-            `Failed to fetch users: ${res.statusText} ${errorData.details || ""}`
-          );
-        }
-        const data = await res.json();
+        const data = await getData();
         setUsers(data);
       } catch (err: any) {
         console.error("Error fetching students:", err);

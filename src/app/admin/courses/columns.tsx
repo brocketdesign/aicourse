@@ -37,7 +37,8 @@ const handleDelete = async (courseId: string, refreshData: () => void) => {
       method: 'DELETE',
     });
     if (!response.ok) {
-      const errorData = await response.json();
+      // Type the error data
+      const errorData: { message?: string } = await response.json();
       throw new Error(errorData.message || "Failed to delete course");
     }
     toast.success("Course deleted successfully!");

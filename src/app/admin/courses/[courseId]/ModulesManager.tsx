@@ -28,18 +28,27 @@ import {
 } from "@/components/ui/dialog";
 import { Trash2, Edit, PlusCircle, BookOpen } from 'lucide-react'; // Add BookOpen icon
 
+interface ModulesManagerProps {
+  courseId: string;
+}
+
 // Define the Module type based on your schema
 interface Module {
   _id: string;
   title: string;
   description: string;
   order: number;
-  // Add other fields like lessons if needed for display
+  lessons?: Lesson[]; // Add lessons field
+  isPublished?: boolean; // Add isPublished field
 }
 
-export function ModulesManager() {
-  const params = useParams();
-  const courseId = params.courseId as string;
+interface Lesson {
+  _id: string;
+  title: string;
+  content: string;
+}
+
+export function ModulesManager({ courseId }: ModulesManagerProps) {
   const [modules, setModules] = useState<Module[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,13 +66,13 @@ export function ModulesManager() {
       if (!response.ok) {
         throw new Error('Failed to fetch modules');
       }
-      const data = await response.json();
+      const data: Module[] = await response.json();
       // Sort modules by order before setting state
       data.sort((a: Module, b: Module) => a.order - b.order);
       setModules(data);
-    } catch (err: any) { // Use any or unknown and check type
+    } catch (err) {
       console.error("Fetch error:", err);
-      setError(err.message || 'An unknown error occurred');
+      setError((err as Error).message || 'An unknown error occurred');
       toast.error("Failed to load modules.");
     } finally {
       setIsLoading(false);
@@ -100,9 +109,9 @@ export function ModulesManager() {
       }
       toast.success("Module deleted successfully!");
       fetchModules(); // Refresh the list
-    } catch (err: any) {
+    } catch (err) {
       console.error("Delete error:", err);
-      toast.error(err.message || "Failed to delete module.");
+      toast.error((err as Error).message || "Failed to delete module.");
     }
   };
 
@@ -119,8 +128,6 @@ export function ModulesManager() {
     const moduleData = {
       title: formData.get('title') as string,
       description: formData.get('description') as string,
-      // Add order if you want to manually set it, otherwise backend handles it for new modules
-      // order: parseInt(formData.get('order') as string, 10),
     };
 
     try {
@@ -141,9 +148,9 @@ export function ModulesManager() {
       setIsDialogOpen(false);
       setCurrentModule(null);
       fetchModules(); // Refresh the list
-    } catch (err: any) {
+    } catch (err) {
       console.error("Submit error:", err);
-      toast.error(err.message || `Failed to ${isEditing ? 'update' : 'add'} module.`);
+      toast.error((err as Error).message || `Failed to ${isEditing ? 'update' : 'add'} module.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -190,18 +197,6 @@ export function ModulesManager() {
                   required
                 />
               </div>
-              {/* Add input for order if manual ordering is needed */}
-              {/* <div className="grid grid-cols-4 items-center gap-4">
-                <label htmlFor="order" className="text-right">Order</label>
-                <Input
-                  id="order"
-                  name="order"
-                  type="number"
-                  defaultValue={currentModule?.order || modules.length + 1}
-                  className="col-span-3"
-                  required
-                />
-              </div> */}
               <DialogFooter>
                  <DialogClose asChild>
                     <Button type="button" variant="outline">Cancel</Button>
@@ -221,7 +216,7 @@ export function ModulesManager() {
             <TableHead className="w-[80px]">Order</TableHead>
             <TableHead>Title</TableHead>
             <TableHead>Description</TableHead>
-            <TableHead>Content</TableHead> {/* Add Content column header */}
+            <TableHead>Content</TableHead>
             <TableHead className="text-right w-[120px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -232,7 +227,7 @@ export function ModulesManager() {
                 <TableCell>{module.order}</TableCell>
                 <TableCell className="font-medium">{module.title}</TableCell>
                 <TableCell>{module.description}</TableCell>
-                <TableCell> {/* Add cell for Manage Content button */}
+                <TableCell>
                   <Link href={`/admin/courses/${courseId}/modules/${module._id}/lessons`} passHref>
                     <Button variant="outline" size="sm">
                       <BookOpen className="mr-2 h-4 w-4" /> Manage Content
@@ -251,7 +246,7 @@ export function ModulesManager() {
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={5} className="text-center">No modules found.</TableCell> {/* Update colSpan */}
+              <TableCell colSpan={5} className="text-center">No modules found. Consider adding one to get started.</TableCell>
             </TableRow>
           )}
         </TableBody>

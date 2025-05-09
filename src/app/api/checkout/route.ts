@@ -94,7 +94,8 @@ export async function POST(request: Request) {
     if (!priceId) {
       console.log(`[Checkout API] No Stripe Price ID found for course ${actualCourseId}. Creating product and price.`);
       // Create or update product
-      const productData = {
+      // Explicitly type productData
+      const productData: { name: string; description?: string; images?: string[]; metadata: { courseId: string } } = {
         name: typedCourse.title,
         description: typedCourse.description,
         images: typedCourse.coverImage ? [typedCourse.coverImage] : undefined,
